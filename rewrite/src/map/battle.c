@@ -6345,6 +6345,7 @@ static const struct _battle_data {
 	{ "max_homunculus_sp",                  &battle_config.max_homunculus_sp,               32767,  100,    INT_MAX,        },
 	{ "max_homunculus_parameter",           &battle_config.max_homunculus_parameter,        175,    10,     SHRT_MAX,       },
 	{ "elemental_masters_walk_speed",       &battle_config.elemental_masters_walk_speed,    1,      0,      1,              },
+	{ "elemental_ai",                       &battle_config.elem_ai,                         0x000,  0x000,  0x77F,          },
 	{ "natural_elem_healhp_interval",       &battle_config.natural_elem_healhp_interval,    3000,   NATURAL_HEAL_INTERVAL, INT_MAX, },
 	{ "natural_elem_healsp_interval",       &battle_config.natural_elem_healsp_interval,    3000,   NATURAL_HEAL_INTERVAL, INT_MAX, },
 	{ "max_elemental_hp",                   &battle_config.max_elemental_hp,                1000000,100,    1000000000,     },

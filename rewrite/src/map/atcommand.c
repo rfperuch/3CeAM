@@ -7970,6 +7970,36 @@ ACMD_FUNC(homtalk)
 }
 
 /*==========================================
+ * make the elemental speak [Rytech]
+ *------------------------------------------*/
+ACMD_FUNC(elemtalk)
+{
+	char mes[100],temp[100];
+
+	nullpo_retr(-1, sd);
+
+	if (sd->sc.count && //no "chatting" while muted.
+		(sd->sc.data[SC_BERSERK] || sd->sc.data[SC_DEEPSLEEP] ||
+		(sd->sc.data[SC_NOCHAT] && sd->sc.data[SC_NOCHAT]->val1&MANNER_NOCHAT)))
+		return -1;
+
+	if ( !sd->ed ) {
+		clif_displaymessage(fd, "You do not have a elemental.");
+		return -1;
+	}
+
+	if (!message || !*message || sscanf(message, "%99[^\n]", mes) < 1) {
+		clif_displaymessage(fd, "Please, enter a message (usage: @elemtalk <message>");
+		return -1;
+	}
+
+	snprintf(temp, sizeof temp ,"%s : %s", sd->ed->db->name, mes);
+	clif_message(&sd->ed->bl, temp);
+
+	return 0;
+}
+
+/*==========================================
  * Show homunculus stats
  *------------------------------------------*/
 ACMD_FUNC(hominfo)
@@ -8008,10 +8038,12 @@ ACMD_FUNC(hominfo)
 	return 0;
 }
 
+/*==========================================
+ * Show elementals stats
+ *------------------------------------------*/
 ACMD_FUNC(eleminfo)
 {
 	struct elemental_data *ed;
-	struct s_elemental_db *db;
 	struct status_data *status;
 	unsigned int minutes, seconds;
 	nullpo_retr(-1, sd);
@@ -8023,7 +8055,6 @@ ACMD_FUNC(eleminfo)
 
 	// Should I add the elemental's element, element lv, and size too?
 	ed = sd->ed;
-	db = ed->db;
 	status = status_get_status_data(&ed->bl);
 
 	// Calculate remaining summon time.
@@ -8032,7 +8063,7 @@ ACMD_FUNC(eleminfo)
 	seconds -= (seconds/60>0)?(seconds/60)*60:0;
 
 	snprintf(atcmd_output, sizeof(atcmd_output) ,"Elemental stats for: %s (Lv %d)",
-		db->name, db->status.size+1);
+		ed->db->name, status->size+1);
 	clif_displaymessage(fd, atcmd_output);
 
 	snprintf(atcmd_output, sizeof(atcmd_output) ,"HP : %d/%d - SP : %d/%d",
@@ -9805,6 +9836,7 @@ AtCommandInfo atcommand_info[] = {
 	{ "hommutation",       60,60,     atcommand_hommutation },
 	{ "hommax",            60,60,     atcommand_hommax },
 	//Elemental Commands
+	{ "elemtalk",          10,10,     atcommand_elemtalk },
 	{ "eleminfo",           1,1,      atcommand_eleminfo }
 };
 

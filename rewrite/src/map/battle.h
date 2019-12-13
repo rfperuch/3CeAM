@@ -581,6 +581,7 @@ extern struct Battle_Config
 	int max_homunculus_parameter;
 
 	// Elemental Settings
+	int elem_ai;
 	int elemental_masters_walk_speed;
 	int natural_elem_healhp_interval;
 	int natural_elem_healsp_interval;

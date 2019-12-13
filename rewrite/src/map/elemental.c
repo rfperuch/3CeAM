@@ -31,11 +31,20 @@
 #include "trade.h"
 #include "unit.h"
 #include "elemental.h"
+#include "homunculus.h"
+#include "mercenary.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+
+#define ACTIVE_ELEM_AI_RANGE 2	//Distance added on top of 'AREA_SIZE' at which mobs enter active AI mode.
+
+#define ELEM_IDLE_SKILL_INTERVAL 10	//Active idle skills should be triggered every 1 second (1000/MIN_ELEMTHINKTIME)
+
+#define MAX_ELEM_MINCHASE 30	//Max minimum chase value to use for mobs.
+#define ELEM_RUDE_ATTACKED_COUNT 2	//After how many rude-attacks should the skill be used?
 
 struct s_elemental_db elemental_db[MAX_ELEMENTAL_CLASS]; // Elemental Database
 
@@ -238,8 +247,6 @@ int elem_data_received(struct s_elemental *elem, bool flag)
 		ed = sd->ed;
 	}
 
-	//if( sd->status.ele_id == 0 )
-	//	elemental_set_calls(ed, 1);
 	sd->status.ele_id = elem->elemental_id;
 
 	if( ed && ed->bl.prev == NULL && sd->bl.prev != NULL )
@@ -252,8 +259,730 @@ int elem_data_received(struct s_elemental *elem, bool flag)
 	return 1;
 }
 
+/*==========================================
+ * Reachability to a Specification ID existence place
+ * state indicates type of 'seek' mob should do:
+ * - MSS_LOOT: Looking for item, path must be easy.
+ * - MSS_RUSH: Chasing attacking player, path is complex
+ * - MSS_FOLLOW: Initiative/support seek, path is complex
+ *------------------------------------------*/
+int elem_can_reach(struct elemental_data *ed,struct block_list *bl,int range, int state)
+{
+	int easy = 0;
+
+	nullpo_ret(ed);
+	nullpo_ret(bl);
+	switch (state) {
+		case MSS_RUSH:
+		case MSS_FOLLOW:
+			easy = 0; //(battle_config.elem_ai&0x1?0:1);
+			break;
+		case MSS_LOOT:
+		default:
+			easy = 1;
+			break;
+	}
+	return unit_can_reach_bl(&ed->bl, bl, range, easy, NULL, NULL);
+}
+
+/*==========================================
+ * Determines if the elem can change target.
+ *------------------------------------------*/
+static int elem_can_changetarget(struct elemental_data* ed, struct block_list* target, int mode)
+{
+	// if the monster was provoked ignore the above rule
+	if(ed->state.provoke_flag)
+	{	
+		if (ed->state.provoke_flag == target->id)
+			return 1;
+		else if (!(battle_config.elem_ai&0x4))
+			return 0;
+	}
+	
+	switch (ed->state.skillstate) {
+		case MSS_BERSERK:
+			if (!(mode&MD_CHANGETARGET_MELEE))
+				return 0;
+			return (battle_config.elem_ai&0x4 || check_distance_bl(&ed->bl, target, 3));
+		case MSS_RUSH:
+			return (mode&MD_CHANGETARGET_CHASE);
+		case MSS_FOLLOW:
+		case MSS_ANGRY:
+		case MSS_IDLE:
+		case MSS_WALK:
+		case MSS_LOOT:
+			return 1;
+		default:
+			return 0;
+	}
+}
+
+/*==========================================
+ * Determination for an attack of a elemental
+ *------------------------------------------*/
+int elem_target(struct elemental_data *ed,struct block_list *bl,int dist)
+{
+	nullpo_ret(ed);
+	nullpo_ret(bl);
+
+	// Nothing will be carried out if there is no mind of changing TAGE by TAGE ending.
+	if(ed->target_id && !elem_can_changetarget(ed, bl, status_get_mode(&ed->bl)))
+		return 0;
+
+	if( !status_check_skilluse(&ed->bl, bl, 0, 0, 0) )
+		return 0;
+
+	ed->target_id = bl->id;	// Since there was no disturbance, it locks on to target.
+	if (ed->state.provoke_flag && bl->id != ed->state.provoke_flag)
+		ed->state.provoke_flag = 0;
+	ed->min_chase=dist+ed->db->range3;
+	if(ed->min_chase>MAX_ELEM_MINCHASE)
+		ed->min_chase=MAX_ELEM_MINCHASE;
+	return 0;
+}
+
+/*==========================================
+ * The ?? routine of an active monster
+ *------------------------------------------*/
+static int elem_ai_sub_hard_activesearch(struct block_list *bl,va_list ap)
+{
+	struct elemental_data *ed;
+	struct block_list **target;
+	int mode;
+	int dist;
+
+	nullpo_ret(bl);
+	ed=va_arg(ap,struct elemental_data *);
+	target= va_arg(ap,struct block_list**);
+	mode= va_arg(ap,int);
+
+	//If can't seek yet, not an enemy, or you can't attack it, skip.
+	if ((*target) == bl || !status_check_skilluse(&ed->bl, bl, 0, 0, 0))
+		return 0;
+
+	if ((mode&MD_TARGETWEAK) && status_get_lv(bl) >= ed->db->lv-5)
+		return 0;
+
+	if(battle_check_target(&ed->bl,bl,BCT_ENEMY)<=0)
+		return 0;
+
+	switch (bl->type)
+	{
+	case BL_PC:
+		if (((TBL_PC*)bl)->state.gangsterparadise &&
+			!(status_get_mode(&ed->bl)&MD_BOSS))
+			return 0; //Gangster paradise protection.
+	default:
+		if (battle_config.hom_setting&0x4 &&
+			(*target) && (*target)->type == BL_HOM && bl->type != BL_HOM)
+			return 0; //For some reason Homun targets are never overriden.
+
+		dist = distance_bl(&ed->bl, bl);
+		if(
+			((*target) == NULL || !check_distance_bl(&ed->bl, *target, dist)) &&
+			battle_check_range(&ed->bl,bl,ed->db->range2)
+		) { //Pick closest target?
+			(*target) = bl;
+			ed->target_id=bl->id;
+			ed->min_chase= dist + ed->db->range3;
+			if(ed->min_chase>MAX_ELEM_MINCHASE)
+				ed->min_chase=MAX_ELEM_MINCHASE;
+			return 1;
+		}
+		break;
+	}
+	return 0;
+}
+
+/*==========================================
+ * chase target-change routine.
+ *------------------------------------------*/
+static int elem_ai_sub_hard_changechase(struct block_list *bl,va_list ap)
+{
+	struct elemental_data *ed;
+	struct block_list **target;
+
+	nullpo_ret(bl);
+	ed=va_arg(ap,struct elemental_data *);
+	target= va_arg(ap,struct block_list**);
+
+	//If can't seek yet, not an enemy, or you can't attack it, skip.
+	if( (*target) == bl || battle_check_target(&ed->bl,bl,BCT_ENEMY) <= 0 ||
+	  	!status_check_skilluse(&ed->bl, bl, 0, 0, 0) )
+		return 0;
+
+	if(battle_check_range (&ed->bl, bl, ed->battle_status.rhw.range))
+	{
+		(*target) = bl;
+		ed->target_id=bl->id;
+		ed->min_chase= ed->db->range3;
+	}
+	return 1;
+}
+
+/*==========================================
+ * Processing of slave elemental
+ *------------------------------------------*/
+static int elem_ai_sub_hard_slaveelem(struct elemental_data *ed,unsigned int tick)
+{
+	struct block_list *bl;
+	int old_dist;
+
+	bl=map_id2bl(ed->master->bl.id);
+
+	if (!bl || status_isdead(bl)) {
+		status_kill(&ed->bl);
+		return 1;
+	}
+	if (bl->prev == NULL)
+		return 0; //Master not on a map? Could be warping, do not process.
+
+	if(status_get_mode(&ed->bl)&MD_CANMOVE)
+	{	//If the elem can move, follow around.
+		
+		// Distance with between slave and master is measured.
+		old_dist=ed->master_dist;
+		ed->master_dist=distance_bl(&ed->bl, bl);
+
+		// Since the master was in near immediately before, teleport is carried out and it pursues.
+		if(bl->m != ed->bl.m || 
+			(old_dist<10 && ed->master_dist>18) ||
+			ed->master_dist > MAX_ELEM_MINCHASE
+		){
+			ed->master_dist = 0;
+			unit_warp(&ed->bl,bl->m,bl->x,bl->y,CLR_TELEPORT);
+			return 1;
+		}
+
+		if(ed->target_id) //Slave is busy with a target.
+			return 0;
+
+		// Approach master if within view range, chase back to Master's area also if standing on top of the master.
+		if((ed->master_dist>ELEM_SLAVEDISTANCE || ed->master_dist == 0) &&
+			unit_can_move(&ed->bl))
+		{
+			short x = bl->x, y = bl->y;
+			elem_stop_attack(ed);
+			if(map_search_freecell(&ed->bl, bl->m, &x, &y, ELEM_SLAVEDISTANCE, ELEM_SLAVEDISTANCE, 1)
+				&& unit_walktoxy(&ed->bl, x, y, 0))
+				return 1;
+		}	
+	} else if (bl->m != ed->bl.m && map_flag_gvg(ed->bl.m)) {
+		//Delete the summoned elem if it's in a gvg ground and the master is elsewhere.
+		status_kill(&ed->bl);
+		return 1;
+	}
+	
+	//Avoid attempting to lock the master's target too often to avoid unnecessary overload.
+	if (DIFF_TICK(ed->last_linktime, tick) < MIN_ELEMLINKTIME && !ed->target_id)
+  	{
+		struct unit_data *ud = unit_bl2ud(bl);
+		ed->last_linktime = tick;
+		
+		if (ud) {
+			struct block_list *tbl=NULL;
+			if (ud->target && ud->state.attack_continue)
+				tbl=map_id2bl(ud->target);
+			else if (ud->skilltarget) {
+				tbl = map_id2bl(ud->skilltarget);
+				//Required check as skilltarget is not always an enemy.
+				if (tbl && battle_check_target(&ed->bl, tbl, BCT_ENEMY) <= 0)
+					tbl = NULL;
+			}
+			if( tbl && status_check_skilluse(&ed->bl, tbl, 0, 0, 0) )
+			{
+				ed->target_id=tbl->id;
+				ed->min_chase=ed->db->range3+distance_bl(&ed->bl, tbl);
+				if(ed->min_chase>MAX_ELEM_MINCHASE)
+					ed->min_chase=MAX_ELEM_MINCHASE;
+				return 1;
+			}
+		}
+	}
+	return 0;
+}
+
+/*==========================================
+ * A lock of target is stopped and elem moves to a standby state.
+ * This also triggers idle skill/movement since the AI can get stuck
+ * when trying to pick new targets when the current chosen target is
+ * unreachable.
+ *------------------------------------------*/
+int elem_unlocktarget(struct elemental_data *ed, unsigned int tick)
+{
+	nullpo_ret(ed);
+
+	switch (ed->state.skillstate) {
+	case MSS_WALK:
+		if (ed->ud.walktimer != INVALID_TIMER)
+			break;
+		//Because it is not unset when the elem finishes walking.
+		ed->state.skillstate = MSS_IDLE;
+	/*case MSS_IDLE:
+		// Idle skill.
+		if ((ed->target_id || !(++ed->ud.walk_count%ELEM_IDLE_SKILL_INTERVAL)) &&
+			elemskill_use(ed, tick, -1))
+			break;
+		//Random walk.
+		if (!ed->master->bl.id &&
+			DIFF_TICK(ed->next_walktime, tick) <= 0 &&
+			!elem_randomwalk(ed,tick))
+			//Delay next random walk when this one failed.
+			ed->next_walktime=tick+rand()%3000;
+		break;*/
+	default:
+		elem_stop_attack(ed);
+		if (battle_config.elem_ai&0x8)
+			elem_stop_walking(ed,1); //Immediately stop chasing.
+		ed->state.skillstate = MSS_IDLE;
+		ed->next_walktime=tick+rand()%3000+3000;
+		break;
+	}
+	if (ed->target_id) {
+		ed->target_id=0;
+		ed->ud.target = 0;
+	}
+	return 0;
+}
+
+/*==========================================
+ * AI of ELEM whose is near a Player
+ *------------------------------------------*/
+static bool elem_ai_sub_hard(struct elemental_data *ed, unsigned int tick)
+{
+	struct block_list *tbl = NULL, *abl = NULL;
+	int dist;
+	int mode;
+	int search_size;
+	int view_range, can_move;
+
+	if( ed->bl.prev == NULL || ed->battle_status.hp <= 0 )
+		return false;
+
+	if( DIFF_TICK(tick, ed->last_thinktime) < MIN_ELEMTHINKTIME )
+		return false;
+
+	ed->last_thinktime = tick;
+
+	if (ed->ud.skilltimer != INVALID_TIMER)
+		return false;
+
+	if(ed->ud.walktimer != INVALID_TIMER && ed->ud.walkpath.path_pos <= 3)
+		return false;
+
+	// Abnormalities
+	if( (ed->sc.opt1 > 0 && ed->sc.opt1 != OPT1_STONEWAIT && ed->sc.opt1 != OPT1_BURNING) ||
+		ed->sc.data[SC_BLADESTOP] ||
+		ed->sc.data[SC_DEEPSLEEP] ||
+		ed->sc.data[SC_CRYSTALIZE] ||
+		ed->sc.data[SC__MANHOLE] ||
+		ed->sc.data[SC_FALLENEMPIRE] )
+  	{	//Should reset targets.
+		ed->target_id = ed->attacked_id = 0;
+		return false;
+	}
+
+	if (ed->sc.count && ed->sc.data[SC_BLIND])
+		view_range = 3;
+	else
+		view_range = ed->db->range2;
+	mode = status_get_mode(&ed->bl);
+
+	can_move = (mode&MD_CANMOVE)&&unit_can_move(&ed->bl);
+
+	if( ed->target_id )
+	{	//Check validity of current target.
+		tbl = map_id2bl(ed->target_id);
+		if( !tbl || tbl->m != ed->bl.m ||
+			(ed->ud.attacktimer == INVALID_TIMER && !status_check_skilluse(&ed->bl, tbl, 0, 0, 0)) ||
+			(ed->ud.walktimer != INVALID_TIMER && !(battle_config.elem_ai&0x1) && !check_distance_bl(&ed->bl, tbl, ed->min_chase)) ||
+			(
+				tbl->type == BL_PC &&
+				((((TBL_PC*)tbl)->state.gangsterparadise && !(mode&MD_BOSS)) ||
+				((TBL_PC*)tbl)->invincible_timer != INVALID_TIMER)
+		) )
+		{	//Unlock current target.
+			//if (elem_warpchase(ed, tbl))
+			//	return true; //Chasing this target.
+			elem_unlocktarget(ed, tick-(battle_config.elem_ai&0x8?3000:0)); //Imediately do random walk.
+			tbl = NULL;
+		}
+	}
+
+	// Check for target change.
+	if( ed->attacked_id && mode&MD_CANATTACK )
+	{
+		if( ed->attacked_id == ed->target_id )
+		{	//Rude attacked check.
+			if( !battle_check_range(&ed->bl, tbl, ed->battle_status.rhw.range)
+			&&  ( //Can't attack back and can't reach back.
+			      (!can_move && DIFF_TICK(tick, ed->ud.canmove_tick) > 0 && (battle_config.elem_ai&0x2 || (ed->sc.data[SC_SPIDERWEB] && ed->sc.data[SC_SPIDERWEB]->val1) ||
+					ed->sc.data[SC_DEEPSLEEP] || ed->sc.data[SC_CRYSTALIZE] || ed->sc.data[SC_BITE] || ed->sc.data[SC__MANHOLE] || ed->sc.data[SC_VACUUM_EXTREME] || ed->sc.data[SC_THORNSTRAP] ))
+			      || !elem_can_reach(ed, tbl, ed->min_chase, MSS_RUSH)
+			    )
+			&&  ed->state.attacked_count++ >= ELEM_RUDE_ATTACKED_COUNT
+			//&&  !elemskill_use(ed, tick, MSC_RUDEATTACKED) // If can't rude Attack
+			&&  can_move && unit_escape(&ed->bl, tbl, rand()%10 +1)) // Attempt escape
+			{	//Escaped
+				ed->attacked_id = 0;
+				return true;
+			}
+		}
+		else
+		if( (abl = map_id2bl(ed->attacked_id)) && (!tbl || elem_can_changetarget(ed, abl, mode)) )
+		{
+			if( ed->bl.m != abl->m || abl->prev == NULL
+				|| (dist = distance_bl(&ed->bl, abl)) >= MAX_ELEM_MINCHASE // Attacker longer than visual area
+				|| battle_check_target(&ed->bl, abl, BCT_ENEMY) <= 0 // Attacker is not enemy of elem
+				|| status_isdead(abl) // Attacker is Dead (Reflecting Damage?)
+				|| (battle_config.elem_ai&0x2 && !status_check_skilluse(&ed->bl, abl, 0, 0, 0)) // Cannot normal attack back to Attacker
+				|| (!battle_check_range(&ed->bl, abl, ed->battle_status.rhw.range) // Not on Melee Range and ...
+				&& ( // Reach check
+					(!can_move && DIFF_TICK(tick, ed->ud.canmove_tick) > 0 && (battle_config.elem_ai&0x2 || (ed->sc.data[SC_SPIDERWEB] && ed->sc.data[SC_SPIDERWEB]->val1) ||
+					ed->sc.data[SC_DEEPSLEEP] || ed->sc.data[SC_CRYSTALIZE] || ed->sc.data[SC_BITE] || ed->sc.data[SC__MANHOLE] || ed->sc.data[SC_VACUUM_EXTREME] || ed->sc.data[SC_THORNSTRAP] ))
+					|| !elem_can_reach(ed, abl, dist+ed->db->range3, MSS_RUSH)
+				)
+				) )
+			{ // Rude attacked
+				if (ed->state.attacked_count++ >= ELEM_RUDE_ATTACKED_COUNT
+				/*&& !elemskill_use(ed, tick, MSC_RUDEATTACKED)*/ && can_move
+				&& !tbl && unit_escape(&ed->bl, abl, rand()%10 +1))
+				{	//Escaped.
+					//TODO: Maybe it shouldn't attempt to run if it has another, valid target?
+					ed->attacked_id = 0;
+					return true;
+				}
+			}
+			else
+			if (!(battle_config.elem_ai&0x2) && !status_check_skilluse(&ed->bl, abl, 0, 0, 0))
+			{
+				//Can't attack back, but didn't invoke a rude attacked skill...
+			}
+			else
+			{ //Attackable
+				if (!tbl || dist < ed->battle_status.rhw.range || !check_distance_bl(&ed->bl, tbl, dist)
+					|| battle_gettarget(tbl) != ed->bl.id)
+				{	//Change if the new target is closer than the actual one
+					//or if the previous target is not attacking the elem.
+					ed->target_id = ed->attacked_id; // set target
+					if (ed->state.attacked_count)
+					  ed->state.attacked_count--; //Should we reset rude attack count?
+					ed->min_chase = dist+ed->db->range3;
+					if(ed->min_chase>MAX_ELEM_MINCHASE)
+						ed->min_chase=MAX_ELEM_MINCHASE;
+					tbl = abl; //Set the new target
+				}
+			}
+		}
+	
+		//Clear it since it's been checked for already.
+		ed->attacked_id = 0;
+	}
+
+	// Processing of slave monster
+	if (ed->master->bl.id > 0 && elem_ai_sub_hard_slaveelem(ed, tick))
+		return true;
+
+	// Scan area for targets
+	/*if (!tbl && mode&MD_LOOTER && ed->lootitem && DIFF_TICK(tick, ed->ud.canact_tick) > 0 &&
+		(ed->lootitem_count < LOOTITEM_SIZE || battle_config.monster_loot_type != 1))
+	{	// Scan area for items to loot, avoid trying to loot of the elem is full and can't consume the items.
+		map_foreachinrange (elem_ai_sub_hard_lootsearch, &ed->bl, view_range, BL_ITEM, ed, &tbl);
+	}*/
+
+	if ((!tbl && mode&MD_AGGRESSIVE) || ed->state.skillstate == MSS_FOLLOW)
+	{
+		map_foreachinrange (elem_ai_sub_hard_activesearch, &ed->bl, view_range, DEFAULT_ELEM_ENEMY_TYPE(ed), ed, &tbl, mode);
+	}
+	else
+	if (mode&MD_CHANGECHASE && (ed->state.skillstate == MSS_RUSH || ed->state.skillstate == MSS_FOLLOW || (ed->sc.count && ed->sc.data[SC_CHAOS])))
+	{
+		search_size = view_range<ed->battle_status.rhw.range ? view_range:ed->battle_status.rhw.range;
+		map_foreachinrange (elem_ai_sub_hard_changechase, &ed->bl, search_size, DEFAULT_ELEM_ENEMY_TYPE(ed), ed, &tbl);
+	}
+
+	if (!tbl) { //No targets available.
+		if (mode&MD_ANGRY && !ed->state.aggressive)
+			ed->state.aggressive = 1; //Restore angry state when no targets are available.
+		//This handles triggering idle walk/skill.
+		elem_unlocktarget(ed, tick);
+		return true;
+	}
+	
+	//Target exists, attack or loot as applicable.
+	/*if (tbl->type == BL_ITEM)
+	{	//Loot time.
+		struct flooritem_data *fitem;
+		if (ed->ud.target == tbl->id && ed->ud.walktimer != INVALID_TIMER)
+			return true; //Already locked.
+		if (ed->lootitem == NULL)
+		{	//Can't loot...
+			elem_unlocktarget (ed, tick);
+			return true;
+		}
+		if (!check_distance_bl(&ed->bl, tbl, 1))
+		{	//Still not within loot range.
+			if (!(mode&MD_CANMOVE))
+			{	//A looter that can't move? Real smart.
+				elem_unlocktarget(ed,tick);
+				return true;
+			}
+			if (!can_move) //Stuck. Wait before walking.
+				return true;
+			ed->state.skillstate = MSS_LOOT;
+			if (!unit_walktobl(&ed->bl, tbl, 1, 1))
+				elem_unlocktarget(ed, tick); //Can't loot...
+			return true;
+		}
+		//Within looting range.
+		if (ed->ud.attacktimer != INVALID_TIMER)
+			return true; //Busy attacking?
+
+		fitem = (struct flooritem_data *)tbl;
+		if(log_config.enable_logs&0x10)	//Logs items, taken by (L)ooter Mobs [Lupus]
+			log_pick_elem(ed, "L", fitem->item_data.nameid, fitem->item_data.amount, &fitem->item_data);
+
+		if (ed->lootitem_count < LOOTITEM_SIZE) {
+			memcpy (&ed->lootitem[ed->lootitem_count++], &fitem->item_data, sizeof(ed->lootitem[0]));
+		} else {	//Destroy first looted item...
+			if (ed->lootitem[0].card[0] == CARD0_PET)
+				intif_delete_petdata( MakeDWord(ed->lootitem[0].card[1],ed->lootitem[0].card[2]) );
+			memmove(&ed->lootitem[0], &ed->lootitem[1], (LOOTITEM_SIZE-1)*sizeof(ed->lootitem[0]));
+			memcpy (&ed->lootitem[LOOTITEM_SIZE-1], &fitem->item_data, sizeof(ed->lootitem[0]));
+		}
+		if (pcdb_checkid(ed->vd->class_))
+		{	//Give them walk act/delay to properly mimic players. [Skotlex]
+			clif_takeitem(&ed->bl,tbl);
+			ed->ud.canact_tick = tick + ed->status.amotion;
+			unit_set_walkdelay(&ed->bl, tick, ed->status.amotion, 1);
+		}
+		//Clear item.
+		map_clearflooritem (tbl->id);
+		elem_unlocktarget (ed,tick);
+		return true;
+	}*/
+	//Attempt to attack.
+	//At this point we know the target is attackable, we just gotta check if the range matches.
+	if (ed->ud.target == tbl->id && ed->ud.attacktimer != INVALID_TIMER) //Already locked.
+		return true;
+	
+	if (battle_check_range (&ed->bl, tbl, ed->battle_status.rhw.range))
+	{	//Target within range, engage
+		if(tbl->type == BL_PC)
+			elem_log_damage(ed, tbl, 0); //Log interaction (counts as 'attacker' for the exp bonus)
+		unit_attack(&ed->bl,tbl->id,1);
+		return true;
+	}
+
+	//Out of range...
+	if (!(mode&MD_CANMOVE))
+	{	//Can't chase. Attempt an idle skill before unlocking.
+		ed->state.skillstate = MSS_IDLE;
+		//if (!elemskill_use(ed, tick, -1))
+			elem_unlocktarget(ed,tick);
+		return true;
+	}
+
+	if (!can_move)
+	{	//Stuck. Attempt an idle skill
+		ed->state.skillstate = MSS_IDLE;
+		//if (!(++ed->ud.walk_count%ELEM_IDLE_SKILL_INTERVAL))
+		//	elemskill_use(ed, tick, -1);
+		return true;
+	}
+
+	if (ed->ud.walktimer != INVALID_TIMER && ed->ud.target == tbl->id &&
+		(
+			!(battle_config.elem_ai&0x1) ||
+			check_distance_blxy(tbl, ed->ud.to_x, ed->ud.to_y, ed->battle_status.rhw.range)
+	)) //Current target tile is still within attack range.
+		return true;
+
+	//Follow up if possible.
+	if(!elem_can_reach(ed, tbl, ed->min_chase, MSS_RUSH) ||
+		!unit_walktobl(&ed->bl, tbl, ed->battle_status.rhw.range, 2))
+		elem_unlocktarget(ed,tick);
+
+	return true;
+}
+
+static int elem_ai_sub_hard_timer(struct block_list *bl,va_list ap)
+{
+	struct elemental_data *ed = (struct elemental_data*)bl;
+	unsigned int tick = va_arg(ap, unsigned int);
+	if (elem_ai_sub_hard(ed, tick)) 
+	{	//Hard AI triggered.
+		if(!ed->state.spotted)
+			ed->state.spotted = 1;
+		ed->last_pcneartime = tick;
+	}
+	return 0;
+}
+
+/*==========================================
+ * Serious processing for elem in PC field of view (foreachclient)
+ *------------------------------------------*/
+static int elem_ai_sub_foreachclient(struct map_session_data *sd,va_list ap)
+{
+	unsigned int tick;
+	tick=va_arg(ap,unsigned int);
+	map_foreachinrange(elem_ai_sub_hard_timer,&sd->bl, AREA_SIZE+ACTIVE_ELEM_AI_RANGE, BL_ELEM,tick);
+
+	return 0;
+}
+
+/*==========================================
+ * Serious processing for elem in PC field of view   (interval timer function)
+ *------------------------------------------*/
+static int elem_ai_hard(int tid, unsigned int tick, int id, intptr data)
+{
+	map_foreachpc(elem_ai_sub_foreachclient,tick);
+
+	return 0;
+}
+
+void elem_log_damage(struct elemental_data *ed, struct block_list *src, int damage)
+{
+	int char_id = 0, flag = MDLF_NORMAL;
+
+	if( damage < 0 )
+		return; //Do nothing for absorbed damage.
+	if( !damage && !(src->type&DEFAULT_ELEM_ENEMY_TYPE(ed)) )
+		return; //Do not log non-damaging effects from non-enemies.
+	if( src->id == ed->bl.id )
+		return; //Do not log self-damage.
+
+	switch( src->type )
+	{
+		case BL_PC: 
+		{
+			struct map_session_data *sd = (TBL_PC*)src;
+			char_id = sd->status.char_id;
+			if( damage )
+				ed->attacked_id = src->id;
+			break;
+		}
+		case BL_HOM:
+		{
+			struct homun_data *hd = (TBL_HOM*)src;
+			flag = MDLF_HOMUN;
+			if( hd->master )
+				char_id = hd->master->status.char_id;
+			if( damage )
+				ed->attacked_id = src->id;
+			break;
+		}
+		case BL_MER:
+		{
+			struct mercenary_data *mer = (TBL_MER*)src;
+			if( mer->master )
+				char_id = mer->master->status.char_id;
+			if( damage )
+				ed->attacked_id = src->id;
+			break;
+		}
+		case BL_ELEM:
+		{
+			struct elemental_data *ed2 = (TBL_ELEM*)src;
+			if( ed2->master )
+				char_id = ed2->master->status.char_id;
+			if( damage )
+				ed->attacked_id = src->id;
+			break;
+		}
+		case BL_PET:
+		{
+			struct pet_data *pd = (TBL_PET*)src;
+			flag = MDLF_PET;
+			if( pd->msd )
+			{
+				char_id = pd->msd->status.char_id;
+				if( damage ) //Let mobs retaliate against the pet's master
+					ed->attacked_id = pd->msd->bl.id;
+			}
+			break;
+		}
+		case BL_MOB:
+		{
+			struct mob_data* md = (TBL_MOB*)src;
+			if( md->special_state.ai && md->master_id )
+			{
+				struct map_session_data* msd = map_id2sd(md->master_id);
+				if( msd )
+					char_id = msd->status.char_id;
+			}
+			if( !damage )
+				break;
+			//Let players decide whether to retaliate versus the master or the mob.
+			if( md->master_id && battle_config.retaliate_to_master )
+				ed->attacked_id = md->master_id;
+			else
+				ed->attacked_id = src->id;
+			break;
+		}
+		default: //For all unhandled types.
+			ed->attacked_id = src->id;
+	}
+	
+	if( char_id )
+	{ //Log damage...
+		int i,minpos;
+		unsigned int mindmg;
+		for(i=0,minpos=DAMAGELOG_SIZE-1,mindmg=UINT_MAX;i<DAMAGELOG_SIZE;i++){
+			if(ed->dmglog[i].id==char_id &&
+				ed->dmglog[i].flag==flag)
+				break;
+			if(ed->dmglog[i].id==0) {	//Store data in first empty slot.
+				ed->dmglog[i].id  = char_id;
+				ed->dmglog[i].flag= flag;
+				break;
+			}
+			if(ed->dmglog[i].dmg<mindmg && i)
+			{	//Never overwrite first hit slot (he gets double exp bonus)
+				minpos=i;
+				mindmg=ed->dmglog[i].dmg;
+			}
+		}
+		if(i<DAMAGELOG_SIZE)
+			ed->dmglog[i].dmg+=damage;
+		else {
+			ed->dmglog[minpos].id  = char_id;
+			ed->dmglog[minpos].flag= flag;
+			ed->dmglog[minpos].dmg = damage;
+		}
+	}
+	return;
+}
+
 void elemental_damage(struct elemental_data *ed, struct block_list *src, int hp, int sp)
 {
+	int damage = hp;
+
+	if (damage > 0)
+	{	//Store total damage...
+		if (UINT_MAX - (unsigned int)damage > ed->tdmg)
+			ed->tdmg+=damage;
+		else if (ed->tdmg == UINT_MAX)
+			damage = 0; //Stop recording damage once the cap has been reached.
+		else { //Cap damage log...
+			damage = (int)(UINT_MAX - ed->tdmg);
+			ed->tdmg = UINT_MAX;
+		}
+		if (ed->state.aggressive)
+		{	//No longer aggressive, change to retaliate AI.
+			ed->state.aggressive = 0;
+			if(ed->state.skillstate== MSS_ANGRY)
+				ed->state.skillstate = MSS_BERSERK;
+			if(ed->state.skillstate== MSS_FOLLOW)
+				ed->state.skillstate = MSS_RUSH;
+		}
+		//Log damage
+		if (src) elem_log_damage(ed, src, damage);
+	}
+
+	if (!src)
+		return;
+
 	if( hp )
 		clif_elemental_updatestatus(ed->master, SP_HP);
 	if( sp )
@@ -400,8 +1129,10 @@ int do_init_elemental(void)
 {
 	read_elementaldb();
 	read_elemental_skilldb();
-	
+
 	//add_timer_func_list(elemental_summon, "elemental_summon");
+	add_timer_func_list(elem_ai_hard,"elem_ai_hard");
+	add_timer_interval(gettick()+MIN_ELEMTHINKTIME,elem_ai_hard,0,0,MIN_ELEMTHINKTIME);
 	return 0;
 }
 

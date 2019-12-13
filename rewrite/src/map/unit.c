@@ -1619,6 +1619,9 @@ int unit_attack(struct block_list *src,int target_id,int continuous)
 	if(src->type == BL_MOB)
 		((TBL_MOB*)src)->state.skillstate = ((TBL_MOB*)src)->state.aggressive?MSS_ANGRY:MSS_BERSERK;
 
+	if(src->type == BL_ELEM)
+		((TBL_ELEM*)src)->state.skillstate = ((TBL_ELEM*)src)->state.aggressive?MSS_ANGRY:MSS_BERSERK;
+
 	if(DIFF_TICK(ud->attackabletime, gettick()) > 0)
 		//Do attack next time it is possible. [Skotlex]
 		ud->attacktimer = add_timer(ud->attackabletime,unit_attack_timer,src->id,0);

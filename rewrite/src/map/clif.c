@@ -12155,7 +12155,7 @@ void clif_parse_SkillUp(int fd,struct map_session_data *sd)
 {
 	pc_skillup(sd,RFIFOW(fd,2));
 }
-// Be sure to make one of these for ID and Pos for Elementals. (FIX ME!!!) [Rytech]
+
 static void clif_parse_UseSkillToId_homun(struct homun_data *hd, struct map_session_data *sd, unsigned int tick, short skillnum, short skilllv, int target_id)
 {
 	int lv;
@@ -12271,7 +12271,6 @@ void clif_parse_UseSkillToId(int fd, struct map_session_data *sd)
 	if (tmp&INF_GROUND_SKILL || !tmp)
 		return; //Using a ground/passive skill on a target? WRONG.
 
-	// Be sure to make one of these and Pos for elementals. (FIX ME!!!) [Rytech]
 	if( skillnum >= HM_SKILLBASE && skillnum < HM_SKILLBASE + MAX_HOMUNSKILL )
 	{
 		clif_parse_UseSkillToId_homun(sd->hd, sd, tick, skillnum, skilllv, target_id);

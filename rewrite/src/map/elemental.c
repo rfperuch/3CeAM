@@ -84,8 +84,10 @@ int elem_create(struct map_session_data *sd, int class_, unsigned int lifetime)
 
 	elem.char_id = sd->status.char_id;
 	elem.class_ = class_;
-	elem.hp = db->status.max_hp;
-	elem.sp = db->status.max_sp;
+	//elem.hp = db->status.max_hp;
+	//elem.sp = db->status.max_sp;
+	elem.hp = 1000000;// Hack to start elemental off with full HP/SP.
+	elem.sp = 1000000;
 	elem.life_time = lifetime;
 
 #ifdef TXT_ONLY// Bypass the char server for TXT.
@@ -518,13 +520,13 @@ int elem_unlocktarget(struct elemental_data *ed, unsigned int tick)
 			break;
 		//Because it is not unset when the elem finishes walking.
 		ed->state.skillstate = MSS_IDLE;
-	/*case MSS_IDLE:
+	case MSS_IDLE:
 		// Idle skill.
 		if ((ed->target_id || !(++ed->ud.walk_count%ELEM_IDLE_SKILL_INTERVAL)) &&
 			elemskill_use(ed, tick, -1))
 			break;
 		//Random walk.
-		if (!ed->master->bl.id &&
+		/*if (!ed->master->bl.id &&
 			DIFF_TICK(ed->next_walktime, tick) <= 0 &&
 			!elem_randomwalk(ed,tick))
 			//Delay next random walk when this one failed.
@@ -621,7 +623,7 @@ static bool elem_ai_sub_hard(struct elemental_data *ed, unsigned int tick)
 			      || !elem_can_reach(ed, tbl, ed->min_chase, MSS_RUSH)
 			    )
 			&&  ed->state.attacked_count++ >= ELEM_RUDE_ATTACKED_COUNT
-			//&&  !elemskill_use(ed, tick, MSC_RUDEATTACKED) // If can't rude Attack
+			&&  !elemskill_use(ed, tick, MSC_RUDEATTACKED) // If can't rude Attack
 			&&  can_move && unit_escape(&ed->bl, tbl, rand()%10 +1)) // Attempt escape
 			{	//Escaped
 				ed->attacked_id = 0;
@@ -645,7 +647,7 @@ static bool elem_ai_sub_hard(struct elemental_data *ed, unsigned int tick)
 				) )
 			{ // Rude attacked
 				if (ed->state.attacked_count++ >= ELEM_RUDE_ATTACKED_COUNT
-				/*&& !elemskill_use(ed, tick, MSC_RUDEATTACKED)*/ && can_move
+				&& !elemskill_use(ed, tick, MSC_RUDEATTACKED) && can_move
 				&& !tbl && unit_escape(&ed->bl, abl, rand()%10 +1))
 				{	//Escaped.
 					//TODO: Maybe it shouldn't attempt to run if it has another, valid target?
@@ -684,12 +686,6 @@ static bool elem_ai_sub_hard(struct elemental_data *ed, unsigned int tick)
 		return true;
 
 	// Scan area for targets
-	/*if (!tbl && mode&MD_LOOTER && ed->lootitem && DIFF_TICK(tick, ed->ud.canact_tick) > 0 &&
-		(ed->lootitem_count < LOOTITEM_SIZE || battle_config.monster_loot_type != 1))
-	{	// Scan area for items to loot, avoid trying to loot of the elem is full and can't consume the items.
-		map_foreachinrange (elem_ai_sub_hard_lootsearch, &ed->bl, view_range, BL_ITEM, ed, &tbl);
-	}*/
-
 	if ((!tbl && mode&MD_AGGRESSIVE) || ed->state.skillstate == MSS_FOLLOW)
 	{
 		map_foreachinrange (elem_ai_sub_hard_activesearch, &ed->bl, view_range, DEFAULT_ELEM_ENEMY_TYPE(ed), ed, &tbl, mode);
@@ -709,58 +705,7 @@ static bool elem_ai_sub_hard(struct elemental_data *ed, unsigned int tick)
 		return true;
 	}
 	
-	//Target exists, attack or loot as applicable.
-	/*if (tbl->type == BL_ITEM)
-	{	//Loot time.
-		struct flooritem_data *fitem;
-		if (ed->ud.target == tbl->id && ed->ud.walktimer != INVALID_TIMER)
-			return true; //Already locked.
-		if (ed->lootitem == NULL)
-		{	//Can't loot...
-			elem_unlocktarget (ed, tick);
-			return true;
-		}
-		if (!check_distance_bl(&ed->bl, tbl, 1))
-		{	//Still not within loot range.
-			if (!(mode&MD_CANMOVE))
-			{	//A looter that can't move? Real smart.
-				elem_unlocktarget(ed,tick);
-				return true;
-			}
-			if (!can_move) //Stuck. Wait before walking.
-				return true;
-			ed->state.skillstate = MSS_LOOT;
-			if (!unit_walktobl(&ed->bl, tbl, 1, 1))
-				elem_unlocktarget(ed, tick); //Can't loot...
-			return true;
-		}
-		//Within looting range.
-		if (ed->ud.attacktimer != INVALID_TIMER)
-			return true; //Busy attacking?
-
-		fitem = (struct flooritem_data *)tbl;
-		if(log_config.enable_logs&0x10)	//Logs items, taken by (L)ooter Mobs [Lupus]
-			log_pick_elem(ed, "L", fitem->item_data.nameid, fitem->item_data.amount, &fitem->item_data);
-
-		if (ed->lootitem_count < LOOTITEM_SIZE) {
-			memcpy (&ed->lootitem[ed->lootitem_count++], &fitem->item_data, sizeof(ed->lootitem[0]));
-		} else {	//Destroy first looted item...
-			if (ed->lootitem[0].card[0] == CARD0_PET)
-				intif_delete_petdata( MakeDWord(ed->lootitem[0].card[1],ed->lootitem[0].card[2]) );
-			memmove(&ed->lootitem[0], &ed->lootitem[1], (LOOTITEM_SIZE-1)*sizeof(ed->lootitem[0]));
-			memcpy (&ed->lootitem[LOOTITEM_SIZE-1], &fitem->item_data, sizeof(ed->lootitem[0]));
-		}
-		if (pcdb_checkid(ed->vd->class_))
-		{	//Give them walk act/delay to properly mimic players. [Skotlex]
-			clif_takeitem(&ed->bl,tbl);
-			ed->ud.canact_tick = tick + ed->status.amotion;
-			unit_set_walkdelay(&ed->bl, tick, ed->status.amotion, 1);
-		}
-		//Clear item.
-		map_clearflooritem (tbl->id);
-		elem_unlocktarget (ed,tick);
-		return true;
-	}*/
+	//Target exists, attack as applicable.
 	//Attempt to attack.
 	//At this point we know the target is attackable, we just gotta check if the range matches.
 	if (ed->ud.target == tbl->id && ed->ud.attacktimer != INVALID_TIMER) //Already locked.
@@ -778,7 +723,7 @@ static bool elem_ai_sub_hard(struct elemental_data *ed, unsigned int tick)
 	if (!(mode&MD_CANMOVE))
 	{	//Can't chase. Attempt an idle skill before unlocking.
 		ed->state.skillstate = MSS_IDLE;
-		//if (!elemskill_use(ed, tick, -1))
+		if (!elemskill_use(ed, tick, -1))
 			elem_unlocktarget(ed,tick);
 		return true;
 	}
@@ -786,8 +731,8 @@ static bool elem_ai_sub_hard(struct elemental_data *ed, unsigned int tick)
 	if (!can_move)
 	{	//Stuck. Attempt an idle skill
 		ed->state.skillstate = MSS_IDLE;
-		//if (!(++ed->ud.walk_count%ELEM_IDLE_SKILL_INTERVAL))
-		//	elemskill_use(ed, tick, -1);
+		if (!(++ed->ud.walk_count%ELEM_IDLE_SKILL_INTERVAL))
+			elemskill_use(ed, tick, -1);
 		return true;
 	}
 
@@ -826,7 +771,7 @@ static int elem_ai_sub_foreachclient(struct map_session_data *sd,va_list ap)
 {
 	unsigned int tick;
 	tick=va_arg(ap,unsigned int);
-	map_foreachinrange(elem_ai_sub_hard_timer,&sd->bl, AREA_SIZE+ACTIVE_ELEM_AI_RANGE, BL_ELEM,tick);
+	map_foreachinrange(elem_ai_sub_hard_timer,&sd->bl,AREA_SIZE+ACTIVE_ELEM_AI_RANGE,BL_ELEM,tick);
 
 	return 0;
 }
@@ -998,9 +943,223 @@ void elemental_heal(struct elemental_data *ed, int hp, int sp)
 }
 
 int elemental_dead(struct elemental_data *ed, struct block_list *src)
-{
+{// I might need to put something more here. [Rytech]
 	elem_delete(ed, 1);
 	return 0;
+}
+
+int elemental_passive_skill(struct elemental_data *ed)
+{
+	nullpo_ret(ed);
+
+	switch ( ed->db->class_ )
+	{// Each elemental has its own unique passive skill.
+		case MOBID_EL_AGNI_S:	return EL_PYROTECHNIC;
+		case MOBID_EL_AGNI_M:	return EL_HEATER;
+		case MOBID_EL_AGNI_L:	return EL_TROPIC;
+		case MOBID_EL_AQUA_S:	return EL_AQUAPLAY;
+		case MOBID_EL_AQUA_M:	return EL_COOLER;
+		case MOBID_EL_AQUA_L:	return EL_CHILLY_AIR;
+		case MOBID_EL_VENTUS_S:	return EL_GUST;
+		case MOBID_EL_VENTUS_M:	return EL_BLAST;
+		case MOBID_EL_VENTUS_L:	return EL_WILD_STORM;
+		case MOBID_EL_TERA_S:	return EL_PETROLOGY;
+		case MOBID_EL_TERA_M:	return EL_CURSED_SOIL;
+		case MOBID_EL_TERA_L:	return EL_UPHEAVAL;
+	}
+
+	// Give it bash if no skill was selected to avoid issues.
+	return SM_BASH;
+}
+
+int elemental_defensive_skill(struct elemental_data *ed)
+{
+	nullpo_ret(ed);
+
+	switch ( ed->db->class_ )
+	{// Each elemental has its own unique defensive skill.
+		case MOBID_EL_AGNI_S:	return EL_CIRCLE_OF_FIRE;
+		case MOBID_EL_AGNI_M:	return EL_FIRE_CLOAK;
+		case MOBID_EL_AGNI_L:	return EL_FIRE_MANTLE;
+		case MOBID_EL_AQUA_S:	return EL_WATER_SCREEN;
+		case MOBID_EL_AQUA_M:	return EL_WATER_DROP;
+		case MOBID_EL_AQUA_L:	return EL_WATER_BARRIER;
+		case MOBID_EL_VENTUS_S:	return EL_WIND_STEP;
+		case MOBID_EL_VENTUS_M:	return EL_WIND_CURTAIN;
+		case MOBID_EL_VENTUS_L:	return EL_ZEPHYR;
+		case MOBID_EL_TERA_S:	return EL_SOLID_SKIN;
+		case MOBID_EL_TERA_M:	return EL_STONE_SHIELD;
+		case MOBID_EL_TERA_L:	return EL_POWER_OF_GAIA;
+	}
+
+	// Give it bash if no skill was selected to avoid issues.
+	return SM_BASH;
+}
+
+int elemental_offensive_skill(struct elemental_data *ed)
+{
+	nullpo_ret(ed);
+
+	switch ( ed->db->class_ )
+	{// Each elemental has its own unique offensive skill.
+		case MOBID_EL_AGNI_S:	return EL_FIRE_ARROW;
+		case MOBID_EL_AGNI_M:	return EL_FIRE_BOMB;
+		case MOBID_EL_AGNI_L:	return EL_FIRE_WAVE;
+		case MOBID_EL_AQUA_S:	return EL_ICE_NEEDLE;
+		case MOBID_EL_AQUA_M:	return EL_WATER_SCREW;
+		case MOBID_EL_AQUA_L:	return EL_TIDAL_WEAPON;
+		case MOBID_EL_VENTUS_S:	return EL_WIND_SLASH;
+		case MOBID_EL_VENTUS_M:	return EL_HURRICANE;
+		case MOBID_EL_VENTUS_L:	return EL_TYPOON_MIS;
+		case MOBID_EL_TERA_S:	return EL_STONE_HAMMER;
+		case MOBID_EL_TERA_M:	return EL_ROCK_CRUSHER;
+		case MOBID_EL_TERA_L:	return EL_STONE_RAIN;
+	}
+
+	// Give it bash if no skill was selected to avoid issues.
+	return SM_BASH;
+}
+
+/*==========================================
+ * Skill use judging
+ *------------------------------------------*/
+int elemskill_use(struct elemental_data *ed, unsigned int tick, int bypass)
+{
+	struct block_list *fbl = NULL;
+	struct block_list *bl;
+	struct elemental_data *fed = NULL;
+	short skill_id;
+	int cast_time = 0;
+
+	nullpo_ret(ed);
+
+	if (ed->ud.skilltimer != INVALID_TIMER)
+		return 0;
+
+	// Skill act delay only affects non-event skills.
+	if (bypass == -1 && DIFF_TICK(ed->ud.canact_tick, tick) > 0)
+		return 0;
+
+	// Aftercast delay check.
+	if (DIFF_TICK(tick, ed->skilldelay) < battle_config.elem_offensive_skill_aftercast)
+		return 0;
+
+	// Cast chance.
+	if (rand() % 100 > battle_config.elem_offensive_skill_chance)
+		return 0;
+
+	// Cast time should only be applied when
+	// the skill is naturally autocasted.
+	if ( bypass == -1 )
+		cast_time = battle_config.elem_offensive_skill_casttime;
+
+	// Check which skill should be casted depending on the elemental.
+	skill_id = elemental_offensive_skill(ed);
+
+	// Elementals have no ground targeted skills but
+	// best to have code for it anyway just in case.
+	if (skill_get_casttype(skill_id) == CAST_GROUND)
+	{// Ground targeted skills. Target the ground where the enemy stands.
+		short x, y;
+
+		bl = map_id2bl(ed->target_id);
+
+		if (!bl)
+			return 0;
+
+		x = bl->x;
+		y = bl->y;
+
+		map_freeblock_lock();
+
+		if( !battle_check_range(&ed->bl,bl,skill_get_range2(&ed->bl, skill_id, 1)) ||
+			!unit_skilluse_pos2(&ed->bl, x, y, skill_id, 1, cast_time, 0) )
+		{
+			map_freeblock_unlock();
+			return 0;
+		}
+	}
+	else
+	{// Entity targeted skills (Enemy/All types)
+		bl = map_id2bl(ed->target_id);
+
+		if (!bl)
+			return 0;
+
+		map_freeblock_lock();
+
+		if( !battle_check_range(&ed->bl,bl,skill_get_range2(&ed->bl, skill_id, 1)) ||
+			!unit_skilluse_id2(&ed->bl, bl->id, skill_id, 1, cast_time, 0) )
+		{
+			map_freeblock_unlock();
+			return 0;
+		}
+	}
+
+	// Aftercast delay should only be applied
+	// when the skill is naturally autocasted.
+	if ( bypass == -1 )
+		ed->skilldelay = tick;
+
+	map_freeblock_unlock();
+
+	return 1;
+}
+
+int elemental_set_control_state(struct elemental_data *ed, short control_state)
+{
+	if( ed == NULL || ed->db == NULL )
+		return -1;
+
+	if ( control_state < CONTROL_WAIT || control_state > CONTROL_OFFENSIVE )
+	{
+		ShowError("elemental_set_control_state : Invalid control state %d detected.\n", control_state);
+		return -1;
+	}
+
+	if ( control_state == ed->state.control_state )
+	{
+		ShowError("elemental_set_control_state : Control state %d is already set.\n", control_state);
+		return -1;
+	}
+
+	ed->state.control_state = control_state;
+
+	if ( ed->state.control_state != CONTROL_OFFENSIVE )
+	{// Switching to a state thats not offensive? Remove attack/aggressive behavior.
+			status_change_end(&ed->bl, SC_MODECHANGE, INVALID_TIMER);
+			elem_unlocktarget(ed, gettick());
+	}
+
+	ShowDebug("Control Status: %d\n",ed->state.control_state);
+
+	switch ( ed->state.control_state )
+	{
+		case CONTROL_WAIT:
+			//status_change_end(&ed->bl, SC_MODECHANGE, INVALID_TIMER);
+			//elem_unlocktarget(ed, gettick());
+			break;
+
+		case CONTROL_PASSIVE:
+			//status_change_end(&ed->bl, SC_MODECHANGE, INVALID_TIMER);
+			//elem_unlocktarget(ed, gettick());
+			unit_skilluse_id(&ed->bl, ed->bl.id, elemental_passive_skill(ed), 1);
+			break;
+
+		case CONTROL_DEFENSIVE:
+			//status_change_end(&ed->bl, SC_MODECHANGE, INVALID_TIMER);
+			//elem_unlocktarget(ed, gettick());
+			unit_skilluse_id(&ed->bl, ed->bl.id, elemental_defensive_skill(ed), 1);
+			break;
+
+		case CONTROL_OFFENSIVE:
+			sc_start4(&ed->bl, SC_MODECHANGE, 100, 1, 0, MD_CANATTACK|MD_AGGRESSIVE, 0, 0);
+			break;
+	}
+
+	ShowDebug("Elem Mode: %d\n",ed->battle_status.mode);
+
+	return -1;
 }
 
 int elemental_checkskill(struct elemental_data *ed, int skill_id)
@@ -1104,7 +1263,7 @@ static bool read_elemental_skilldb_sub(char* str[], int columns, int current)
 	db = &elemental_db[i];
 
 	mode = atoi(str[2]);
-	if( mode < ELEMMODE_PASSIVE || mode > ELEMMODE_OFFENSIVE )
+	if( mode < CONTROL_PASSIVE || mode > CONTROL_OFFENSIVE )
 	{
 		ShowError("read_elemental_skilldb : Mode %d out of range.\n", mode);
 		return false;

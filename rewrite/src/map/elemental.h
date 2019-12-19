@@ -27,10 +27,10 @@ enum {
 };
 
 enum {
-	ELEMMODE_WAIT,
-	ELEMMODE_PASSIVE,
-	ELEMMODE_DEFENSIVE,
-	ELEMMODE_OFFENSIVE,
+	CONTROL_WAIT,
+	CONTROL_PASSIVE,
+	CONTROL_DEFENSIVE,
+	CONTROL_OFFENSIVE,
 };
 
 struct s_elemental_db {
@@ -78,6 +78,7 @@ struct elemental_data {
 		//unsigned npc_killmonster: 1; //for new killmonster behavior
 		//unsigned rebirth: 1; // NPC_Rebirth used
 		//unsigned int bg_id; // BattleGround System
+		short control_state: 3;// State set through SO_EL_CONTROL
 	} state;
 	struct {
 		int id;
@@ -91,6 +92,8 @@ struct elemental_data {
 	unsigned int next_walktime,last_thinktime,last_linktime,last_pcneartime;
 	short min_chase;
 	int master_dist;
+
+	unsigned int skilldelay;
 };
 
 bool elem_class(int class_);
@@ -112,11 +115,18 @@ int elemental_get_type(struct elemental_data *ed);
 
 int elemental_checkskill(struct elemental_data *ed, int skill_id);
 
+int elemental_set_control_state(struct elemental_data *ed, short control_state);
+
+int elemental_passive_skill(struct elemental_data *ed);
+int elemental_defensive_skill(struct elemental_data *ed);
+int elemental_offensive_skill(struct elemental_data *ed);
+
 // AI Stuff
 int elem_target(struct elemental_data *ed,struct block_list *bl,int dist);
 int elem_unlocktarget(struct elemental_data *ed, unsigned int tick);
 int elem_can_reach(struct elemental_data *ed,struct block_list *bl,int range, int state);
 void elem_log_damage(struct elemental_data *ed, struct block_list *src, int damage);
+int elemskill_use(struct elemental_data *ed, unsigned int tick, int bypass);
 
 #define elem_stop_walking(ed, type) unit_stop_walking(&(ed)->bl, type)
 #define elem_stop_attack(ed) unit_stop_attack(&(ed)->bl)

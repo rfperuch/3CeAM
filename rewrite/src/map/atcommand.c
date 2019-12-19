@@ -6348,12 +6348,15 @@ ACMD_FUNC(useskill)
 		return -1;
 	}
 
-	if (skillnum >= HM_SKILLBASE && skillnum < HM_SKILLBASE+MAX_HOMUNSKILL
-		&& sd->hd && merc_is_hom_active(sd->hd)) // (If used with @useskill, put the homunc as dest)
-		bl = &sd->hd->bl;
+	if (skillnum >= HM_SKILLBASE && skillnum < HM_SKILLBASE+MAX_HOMUNSKILL && sd->hd && merc_is_hom_active(sd->hd))
+		bl = &sd->hd->bl;// Put the homunculus as dest.
+	if (skillnum >= MC_SKILLBASE && skillnum < MC_SKILLBASE+MAX_MERCSKILL && sd->md)
+		bl = &sd->md->bl;// Put the mercenary as dest.
+	else if (skillnum >= EL_SKILLBASE && skillnum < EL_SKILLBASE+MAX_ELEMSKILL && sd->ed)
+		bl = &sd->ed->bl;// Put the elemental as dest.
 	else
 		bl = &sd->bl;
-	
+
 	if (skill_get_inf(skillnum)&INF_GROUND_SKILL)
 		unit_skilluse_pos(bl, pl_sd->bl.x, pl_sd->bl.y, skillnum, skilllv);
 	else

@@ -1433,7 +1433,7 @@ int skill_additional_effect (struct block_list* src, struct block_list *bl, int 
 				case SC_FULL_SWING_K:	case SC_MANA_PLUS:		case SC_MUSTLE_M:
 				case SC_LIFE_FORCE_F:
 				// Elementals and Insignias
-				/*case SC_WATER_BARRIER:	case SC_ZEPHYR:			case SC_POWER_OF_GAIA:
+				case SC_WATER_BARRIER:	case SC_ZEPHYR:			case SC_POWER_OF_GAIA:
 				case SC_PYROTECHNIC:	case SC_PYROTECHNIC_OPTION:	case SC_HEATER:
 				case SC_HEATER_OPTION:	case SC_TROPIC:			case SC_TROPIC_OPTION:
 				case SC_AQUAPLAY:		case SC_AQUAPLAY_OPTION:	case SC_COOLER:
@@ -1448,7 +1448,7 @@ int skill_additional_effect (struct block_list* src, struct block_list *bl, int 
 				case SC_WIND_STEP_OPTION:	case SC_WIND_CURTAIN:	case SC_WIND_CURTAIN_OPTION:
 				case SC_SOLID_SKIN:		case SC_SOLID_SKIN_OPTION:	case SC_STONE_SHIELD:
 				case SC_STONE_SHIELD_OPTION:	case SC_TIDAL_WEAPON:	case SC_TIDAL_WEAPON_OPTION:
-				case SC_ROCK_CRUSHER:	case SC_ROCK_CRUSHER_ATK:*/	case SC_FIRE_INSIGNIA:
+				case SC_ROCK_CRUSHER:	case SC_ROCK_CRUSHER_ATK:	case SC_FIRE_INSIGNIA:
 				case SC_WATER_INSIGNIA:	case SC_WIND_INSIGNIA:	case SC_EARTH_INSIGNIA:
 				// Mutated Homunculus
 				case SC_NEEDLE_OF_PARALYZE:	case SC_PAIN_KILLER:	case SC_LIGHT_OF_REGENE:
@@ -1639,6 +1639,9 @@ int skill_additional_effect (struct block_list* src, struct block_list *bl, int 
 		break;
 	case MH_LAVA_SLIDE:
 		sc_start(bl, SC_BURNING, 10 * skilllv, skilllv, skill_get_time2(skillid,skilllv));
+		break;
+	case EL_FIRE_MANTLE:
+		sc_start(bl,SC_BURNING,5,skilllv,skill_get_time2(skillid,skilllv));
 		break;
 	}
 
@@ -2896,6 +2899,7 @@ int skill_attack(int attack_type, struct block_list* src, struct block_list *dsr
 			case MG_FIREWALL:
 			case PR_SANCTUARY:
 			case GN_WALLOFTHORN:
+			case EL_FIRE_MANTLE:
 				direction = unit_getdir(bl);	// backward
 				break;
 		}
@@ -4735,6 +4739,9 @@ int skill_castend_damage_id (struct block_list* src, struct block_list *bl, int 
 	case KO_KAIHOU:
 	case SU_SV_STEMSPEAR:
 	case MH_ERASER_CUTTER:
+	case EL_FIRE_ARROW:
+	case EL_FIRE_BOMB:
+	case EL_FIRE_WAVE:
 		skill_attack(BF_MAGIC,src,src,bl,skillid,skilllv,tick,flag);
 		break;
 
@@ -6051,6 +6058,35 @@ int skill_castend_nodamage_id (struct block_list *src, struct block_list *bl, in
 	case SU_FRESHSHRIMP:
 		clif_skill_nodamage(src,bl,skillid,skilllv,
 			sc_start(bl,type,100,skilllv,skill_get_time(skillid,skilllv)));
+		break;
+
+	case EL_CIRCLE_OF_FIRE:
+	case EL_FIRE_CLOAK:
+	case EL_WATER_SCREEN:
+	case EL_WATER_DROP:
+	case EL_WIND_STEP:
+	case EL_WIND_CURTAIN:
+	case EL_SOLID_SKIN:
+	case EL_STONE_SHIELD:
+	case EL_PYROTECHNIC:
+	case EL_HEATER:
+	case EL_TROPIC:
+	case EL_AQUAPLAY:
+	case EL_COOLER:
+	case EL_CHILLY_AIR:
+	case EL_GUST:
+	case EL_BLAST:
+	case EL_WILD_STORM:
+	case EL_PETROLOGY:
+	case EL_CURSED_SOIL:
+	case EL_UPHEAVAL:
+		if ( sd )// Show only the animation if casted by player to avoid problems.
+			clif_skill_damage(src, bl, tick, status_get_amotion(src), 0, 0, 1, skillid, skilllv, 6);
+		else
+		{// Activate the status only if casted by a elemental since it checks for its master on startup.
+			clif_skill_damage(src, &ed->master->bl, tick, status_get_amotion(src), 0, 0, 1, skillid, skilllv, 6);
+			sc_start(bl, type, 100, skilllv, skill_get_time(skillid,skilllv));
+		}
 		break;
 
 	case SU_SV_ROOTTWIST:
@@ -7668,7 +7704,7 @@ int skill_castend_nodamage_id (struct block_list *src, struct block_list *bl, in
 				case SC_FULL_SWING_K:	case SC_MANA_PLUS:		case SC_MUSTLE_M:
 				case SC_LIFE_FORCE_F:
 				// Elementals and Insignias
-				/*case SC_WATER_BARRIER:	case SC_ZEPHYR:			case SC_POWER_OF_GAIA:
+				case SC_WATER_BARRIER:	case SC_ZEPHYR:			case SC_POWER_OF_GAIA:
 				case SC_PYROTECHNIC:	case SC_PYROTECHNIC_OPTION:	case SC_HEATER:
 				case SC_HEATER_OPTION:	case SC_TROPIC:			case SC_TROPIC_OPTION:
 				case SC_AQUAPLAY:		case SC_AQUAPLAY_OPTION:	case SC_COOLER:
@@ -7683,7 +7719,7 @@ int skill_castend_nodamage_id (struct block_list *src, struct block_list *bl, in
 				case SC_WIND_STEP_OPTION:	case SC_WIND_CURTAIN:	case SC_WIND_CURTAIN_OPTION:
 				case SC_SOLID_SKIN:		case SC_SOLID_SKIN_OPTION:	case SC_STONE_SHIELD:
 				case SC_STONE_SHIELD_OPTION:	case SC_TIDAL_WEAPON:	case SC_TIDAL_WEAPON_OPTION:
-				case SC_ROCK_CRUSHER:	case SC_ROCK_CRUSHER_ATK:*/	case SC_FIRE_INSIGNIA:
+				case SC_ROCK_CRUSHER:	case SC_ROCK_CRUSHER_ATK:	case SC_FIRE_INSIGNIA:
 				case SC_WATER_INSIGNIA:	case SC_WIND_INSIGNIA:	case SC_EARTH_INSIGNIA:
 				// Mutated Homunculus
 				case SC_NEEDLE_OF_PARALYZE:	case SC_PAIN_KILLER:	case SC_LIGHT_OF_REGENE:
@@ -9485,7 +9521,7 @@ int skill_castend_nodamage_id (struct block_list *src, struct block_list *bl, in
 				case SC_FULL_SWING_K:	case SC_MANA_PLUS:		case SC_MUSTLE_M:
 				case SC_LIFE_FORCE_F:
 				// Elementals and Insignias
-				/*case SC_WATER_BARRIER:	case SC_ZEPHYR:			case SC_POWER_OF_GAIA:
+				case SC_WATER_BARRIER:	case SC_ZEPHYR:			case SC_POWER_OF_GAIA:
 				case SC_PYROTECHNIC:	case SC_PYROTECHNIC_OPTION:	case SC_HEATER:
 				case SC_HEATER_OPTION:	case SC_TROPIC:			case SC_TROPIC_OPTION:
 				case SC_AQUAPLAY:		case SC_AQUAPLAY_OPTION:	case SC_COOLER:
@@ -9500,7 +9536,7 @@ int skill_castend_nodamage_id (struct block_list *src, struct block_list *bl, in
 				case SC_WIND_STEP_OPTION:	case SC_WIND_CURTAIN:	case SC_WIND_CURTAIN_OPTION:
 				case SC_SOLID_SKIN:		case SC_SOLID_SKIN_OPTION:	case SC_STONE_SHIELD:
 				case SC_STONE_SHIELD_OPTION:	case SC_TIDAL_WEAPON:	case SC_TIDAL_WEAPON_OPTION:
-				case SC_ROCK_CRUSHER:	case SC_ROCK_CRUSHER_ATK:*/	case SC_FIRE_INSIGNIA:
+				case SC_ROCK_CRUSHER:	case SC_ROCK_CRUSHER_ATK:	case SC_FIRE_INSIGNIA:
 				case SC_WATER_INSIGNIA:	case SC_WIND_INSIGNIA:	case SC_EARTH_INSIGNIA:
 				// Mutated Homunculus
 				case SC_NEEDLE_OF_PARALYZE:	case SC_PAIN_KILLER:	case SC_LIGHT_OF_REGENE:
@@ -10392,10 +10428,26 @@ int skill_castend_nodamage_id (struct block_list *src, struct block_list *bl, in
 	case SO_EL_CONTROL:
 		if ( sd )
 		{
-			if ( skilllv == 4 && sd->ed )
-				elem_delete(sd->ed, 0);
+			if ( sd->ed )
+			{// Trying to set to a control state its already in? Set it to Wait.
+				if ( skilllv == sd->ed->state.control_state )
+					elemental_set_control_state(sd->ed, CONTROL_WAIT);
+				// Lv 1 - Passive, Lv 2 - Defensive, Lv 3 - Offensive
+				else if ( skilllv >= 1 && skilllv <= 3 )
+					elemental_set_control_state(sd->ed, skilllv);
+				// Lv 4 - Ends the summon.
+				else if ( skilllv == 4 )
+					elem_delete(sd->ed, 0);
+				else// Safe guard in case a lv not supported is used.
+					clif_skill_fail(sd,skillid,0,0,0);
 
-			clif_skill_nodamage(src, bl, skillid, skilllv, 1);
+				clif_skill_nodamage(src, bl, skillid, skilllv, 1);
+			}
+			else
+			{// Protection for GM's bypassing pre-cast requirements.
+				clif_skill_fail(sd,skillid,0,0,0);
+				break;
+			}
 		}
 		break;
 
@@ -10405,10 +10457,6 @@ int skill_castend_nodamage_id (struct block_list *src, struct block_list *bl, in
 	case SO_SUMMON_TERA:
 		if ( sd )
 		{
-			const short agni_id[3] = { MOBID_EL_AGNI_S, MOBID_EL_AGNI_M, MOBID_EL_AGNI_L };
-			const short aqua_id[3] = { MOBID_EL_AQUA_S, MOBID_EL_AQUA_M, MOBID_EL_AQUA_L };
-			const short ventus_id[3] = { MOBID_EL_VENTUS_S, MOBID_EL_VENTUS_M, MOBID_EL_VENTUS_L };
-			const short tera_id[3] = { MOBID_EL_TERA_S, MOBID_EL_TERA_M, MOBID_EL_TERA_L };
 			short summon_id = 0;
 
 			if ( skilllv < 1 || skilllv > 3 )
@@ -10423,10 +10471,10 @@ int skill_castend_nodamage_id (struct block_list *src, struct block_list *bl, in
 
 			switch ( skillid )
 			{// Which elemental is being summoned?
-				case SO_SUMMON_AGNI: summon_id = agni_id[skilllv-1]; break;
-				case SO_SUMMON_AQUA: summon_id = aqua_id[skilllv-1]; break;
-				case SO_SUMMON_VENTUS: summon_id = ventus_id[skilllv-1]; break;
-				case SO_SUMMON_TERA: summon_id = tera_id[skilllv-1]; break;
+				case SO_SUMMON_AGNI: summon_id = MOBID_EL_AGNI_S+skilllv-1; break;
+				case SO_SUMMON_AQUA: summon_id = MOBID_EL_AQUA_S+skilllv-1; break;
+				case SO_SUMMON_VENTUS: summon_id = MOBID_EL_VENTUS_S+skilllv-1; break;
+				case SO_SUMMON_TERA: summon_id = MOBID_EL_TERA_S+skilllv-1; break;
 			}
 
 			clif_skill_nodamage(src, bl, skillid, skilllv, 1);
@@ -10434,43 +10482,19 @@ int skill_castend_nodamage_id (struct block_list *src, struct block_list *bl, in
 		}
 		break;
 
-	/*case SO_EL_CONTROL:
-		if( sd )
+	case SO_EL_ACTION:
+		if ( sd )
 		{
-			int mode = ELEMMODE_PASSIVE;	// Standard mode.
-			if( !sd->ed )
+			if ( sd->ed )
 			{
+				unit_skilluse_id(&sd->ed->bl, bl->id, elemental_offensive_skill(sd->ed), 1);
+				clif_skill_nodamage(src, bl, skillid, skilllv, 1);
+			}
+			else
+			{// Protection for GM's bypassing pre-cast requirements.
 				clif_skill_fail(sd,skillid,0,0,0);
 				break;
 			}
-			if( skilllv == 4 )
-			{	// At level 4 delete elementals.
-				if( elem_delete(sd->ed, 0) )
-					clif_skill_fail(sd,skillid,0,0,0);
-				break;
-			}
-			switch( skilllv )
-			{	// Select mode bassed on skill level used.
-				case 1: mode = ELEMMODE_PASSIVE; break;
-				case 2: mode = ELEMMODE_DEFENSIVE; break;
-				case 3: mode = ELEMMODE_OFFENSIVE; break;
-			}
-			//if( !elemental_change_mode(sd->ed,mode) )
-			//{
-			//	clif_skill_fail(sd,skillid,0,0,0);
-			//	break;
-			//}
-			clif_skill_nodamage(src,bl,skillid,skilllv,1);
-		}
-		break;*/
-
-	case SO_EL_ACTION:
-		if( sd )
-		{
-			if( !sd->ed )
-				break;
-			//elemental_action(sd->ed, bl, tick);
-			clif_skill_nodamage(src,bl,skillid,skilllv,1);
 		}
 		break;
 
@@ -11509,6 +11533,7 @@ int skill_castend_pos(int tid, unsigned int tick, int id, intptr data)
 int skill_castend_pos2(struct block_list* src, int x, int y, int skillid, int skilllv, unsigned int tick, int flag)
 {
 	struct map_session_data* sd;
+	struct elemental_data* ed;
 	struct status_change* sc;
 	struct status_change_entry *sce;
 	struct skill_unit_group* sg;
@@ -11524,6 +11549,7 @@ int skill_castend_pos2(struct block_list* src, int x, int y, int skillid, int sk
 		return 0;
 
 	sd = BL_CAST(BL_PC, src);
+	ed = BL_CAST(BL_ELEM, src);
 
 	sc = status_get_sc(src);
 	type = status_skill2sc(skillid);
@@ -11721,6 +11747,17 @@ int skill_castend_pos2(struct block_list* src, int x, int y, int skillid, int sk
 		flag|=1;//Set flag to 1 to prevent deleting ammo (it will be deleted on group-delete).
 	case GS_GROUNDDRIFT: //Ammo should be deleted right away.
 		skill_unitsetting(src,skillid,skilllv,x,y,0);
+		break;
+
+	case EL_FIRE_MANTLE:
+	case EL_WATER_BARRIER:
+	case EL_ZEPHYR:
+	case EL_POWER_OF_GAIA:
+		flag|=1;
+		if ( sd )
+			skill_unitsetting(src,skillid,skilllv,src->x,src->y,0);
+		else
+			skill_unitsetting(src,skillid,skilllv,ed->master->bl.x,ed->master->bl.y,0);
 		break;
 
 	case SU_CN_POWDERING:
@@ -12703,7 +12740,9 @@ struct skill_unit_group* skill_unitsetting (struct block_list *src, short skilli
 			limit = limit*3/2;
 		val2=4+skilllv;
 		break;
-
+	case EL_FIRE_MANTLE:
+		val2=3;// What is the official number of hits a cell can give before vanishing? [Rytech]
+		break;
 	case AL_WARP:
 		val1=skilllv+6;
 		if(!(flag&1))
@@ -13032,6 +13071,7 @@ struct skill_unit_group* skill_unitsetting (struct block_list *src, short skilli
 		{
 		case MG_FIREWALL:
 		case NJ_KAENSIN:
+		case EL_FIRE_MANTLE:
 			val2=group->val2;
 			break;
 		case WZ_ICEWALL:
@@ -13233,6 +13273,9 @@ static int skill_unit_onplace (struct skill_unit *src, struct block_list *bl, un
 	case UNT_EARTH_INSIGNIA:
 	case UNT_CN_POWDERING:
 	case UNT_NYANGGRASS:
+	case UNT_WATER_BARRIER:
+	case UNT_ZEPHYR:
+	case UNT_POWER_OF_GAIA:
 		if (sg->src_id == bl->id && (sg->unit_id == UNT_STEALTHFIELD || sg->unit_id == UNT_BLOODYLUST))
 			return 0;// Can't be affected by your own AoE.
 		if(!sce)
@@ -13445,6 +13488,7 @@ int skill_unit_onplace_timer (struct skill_unit *src, struct block_list *bl, uns
 	{
 		case UNT_FIREWALL:
 		case UNT_KAEN:
+		case UNT_FIRE_MANTLE:
 		{
 			int count=0;
 			const int x = bl->x, y = bl->y;
@@ -14197,6 +14241,9 @@ static int skill_unit_onleft (int skill_id, struct block_list *bl, unsigned int 
 		case SU_CN_POWDERING:
 		case SU_NYANGGRASS:
 		case MH_STEINWAND:
+		case EL_WATER_BARRIER:
+		case EL_ZEPHYR:
+		case EL_POWER_OF_GAIA:
 			if (sce)
 				status_change_end(bl, type, INVALID_TIMER);
 			break;
@@ -19571,6 +19618,19 @@ void skill_init_unit_layout (void)
 				static const int dx[] = {-1,-2,-2,-2,-2,-2,-1, 0, 1, 2, 2, 2, 2, 2, 1, 0};
 				static const int dy[] = { 2, 2, 1, 0,-1,-2,-2,-2,-2,-2,-1, 0, 1, 2, 2, 2};
 				skill_unit_layout[pos].count = 16;
+				memcpy(skill_unit_layout[pos].dx,dx,sizeof(dx));
+				memcpy(skill_unit_layout[pos].dy,dy,sizeof(dy));
+				break;
+			}
+			case 1603:// EL_FIRE_MANTLE
+			{	// Its pointless to make a 2nd entire skill range check code for 1 elemental skill.
+				// Decided to check for the offset ID instead. Should be fine as long as the
+				// elemental skills ID offsets don't get changed.
+				//
+				// Need confirm on if there's no unit placed where the player stands. [Rytech]
+				static const int dx[] = {-1,-1,-1, 0, 0, 1, 1, 1};
+				static const int dy[] = {-1, 0, 1,-1, 1,-1, 0, 1};
+				skill_unit_layout[pos].count = 8;
 				memcpy(skill_unit_layout[pos].dx,dx,sizeof(dx));
 				memcpy(skill_unit_layout[pos].dy,dy,sizeof(dy));
 				break;

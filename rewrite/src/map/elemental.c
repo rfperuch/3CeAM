@@ -86,8 +86,8 @@ int elem_create(struct map_session_data *sd, int class_, unsigned int lifetime)
 	elem.class_ = class_;
 	//elem.hp = db->status.max_hp;
 	//elem.sp = db->status.max_sp;
-	elem.hp = 1000000;// Hack to start elemental off with full HP/SP.
-	elem.sp = 1000000;
+	elem.hp = 100;
+	elem.sp = 100;
 	elem.life_time = lifetime;
 
 #ifdef TXT_ONLY// Bypass the char server for TXT.
@@ -181,12 +181,15 @@ int elem_delete(struct elemental_data *ed, int reply)
 		status_change_end(&sd->bl, SC_WATER_SCREEN, INVALID_TIMER);
 	}
 
+	status_change_end(&sd->bl, SC_EL_COST, INVALID_TIMER);
+
 	return unit_remove_map(&ed->bl, CLR_OUTSIGHT);
 }
 
 void elem_summon_stop(struct elemental_data *ed)
 {
 	nullpo_retv(ed);
+	ed->state.alive = 0;
 	if( ed->summon_timer != INVALID_TIMER )
 		delete_timer(ed->summon_timer, elem_summon_end);
 	ed->summon_timer = INVALID_TIMER;
@@ -222,6 +225,7 @@ int elem_data_received(struct s_elemental *elem, bool flag)
 		ed->bl.type = BL_ELEM;
 		ed->bl.id = npc_get_new_npc_id();
 		ed->water_screen_flag = 0;
+		ed->state.alive = 1;
 
 		ed->master = sd;
 		ed->db = db;
@@ -257,6 +261,9 @@ int elem_data_received(struct s_elemental *elem, bool flag)
 		clif_spawn(&ed->bl);
 		clif_elemental_info(sd);
 	}
+
+	sc_start(&ed->bl, SC_EL_WAIT, 100, 1, 0);
+	sc_start(&sd->bl, SC_EL_COST, 100, 1+ed->battle_status.size, 0);
 
 	return 1;
 }
@@ -1036,6 +1043,10 @@ int elemskill_use(struct elemental_data *ed, unsigned int tick, int bypass)
 	if (ed->ud.skilltimer != INVALID_TIMER)
 		return 0;
 
+	// Only allow autocasting offensive skills in offensive mode unless config allows in defensive mode.
+	if ( !(ed->sc.data[SC_EL_OFFENSIVE] || battle_config.elem_defensive_attack_skill) )
+		return 0;
+
 	// Skill act delay only affects non-event skills.
 	if (bypass == -1 && DIFF_TICK(ed->ud.canact_tick, tick) > 0)
 		return 0;
@@ -1106,72 +1117,56 @@ int elemskill_use(struct elemental_data *ed, unsigned int tick, int bypass)
 	return 1;
 }
 
-int elemental_set_control_state(struct elemental_data *ed, short control_state)
+int elemental_set_control_mode(struct elemental_data *ed, short control_mode)
 {
 	if( ed == NULL || ed->db == NULL )
 		return -1;
 
-	if ( control_state < CONTROL_WAIT || control_state > CONTROL_OFFENSIVE )
+	if ( control_mode < CONTROL_WAIT || control_mode > CONTROL_OFFENSIVE )
 	{
-		ShowError("elemental_set_control_state : Invalid control state %d detected.\n", control_state);
+		ShowError("elemental_set_control_state : Invalid control state %d given.\n", control_mode);
 		return -1;
 	}
 
-	if ( control_state == ed->state.control_state )
-	{
-		ShowError("elemental_set_control_state : Control state %d is already set.\n", control_state);
-		return -1;
-	}
+	// Attempting to set a control mode thats already active? Set it to wait.
+	if (control_mode == CONTROL_PASSIVE && ed->sc.data[SC_EL_PASSIVE] || 
+		control_mode == CONTROL_DEFENSIVE && ed->sc.data[SC_EL_DEFENSIVE] || 
+		control_mode == CONTROL_OFFENSIVE && ed->sc.data[SC_EL_OFFENSIVE])
+		control_mode = CONTROL_WAIT;
 
-	ed->state.control_state = control_state;
+	// Remove all control status's before setting a new one.
+	status_change_end(&ed->bl, SC_EL_WAIT, INVALID_TIMER);
+	status_change_end(&ed->bl, SC_EL_PASSIVE, INVALID_TIMER);
+	status_change_end(&ed->bl, SC_EL_DEFENSIVE, INVALID_TIMER);
+	status_change_end(&ed->bl, SC_EL_OFFENSIVE, INVALID_TIMER);
 
-	if ( ed->state.control_state != CONTROL_OFFENSIVE )
-	{// Switching to a state thats not offensive? Remove attack/aggressive behavior.
-			status_change_end(&ed->bl, SC_MODECHANGE, INVALID_TIMER);
-			elem_unlocktarget(ed, gettick());
-	}
+	// Unlock target to stop attacking after mode status removal.
+	elem_unlocktarget(ed, gettick());
 
-	ShowDebug("Control Status: %d\n",ed->state.control_state);
-
-	switch ( ed->state.control_state )
+	// Ready to set the new mode.
+	switch ( control_mode )
 	{
 		case CONTROL_WAIT:
-			//status_change_end(&ed->bl, SC_MODECHANGE, INVALID_TIMER);
-			//elem_unlocktarget(ed, gettick());
+			sc_start(&ed->bl, SC_EL_WAIT, 100, 1, 0);
 			break;
 
 		case CONTROL_PASSIVE:
-			//status_change_end(&ed->bl, SC_MODECHANGE, INVALID_TIMER);
-			//elem_unlocktarget(ed, gettick());
+			sc_start(&ed->bl, SC_EL_PASSIVE, 100, ed->battle_status.size, 0);// SP Cost depends on summon LV.
 			unit_skilluse_id(&ed->bl, ed->bl.id, elemental_passive_skill(ed), 1);
 			break;
 
 		case CONTROL_DEFENSIVE:
-			//status_change_end(&ed->bl, SC_MODECHANGE, INVALID_TIMER);
-			//elem_unlocktarget(ed, gettick());
+			if ( ed->battle_status.size != 2 )// Lv 3 summons don't enter defensive mode. They only cast a AoE.
+				sc_start(&ed->bl, SC_EL_DEFENSIVE, 100, 1, 0);
 			unit_skilluse_id(&ed->bl, ed->bl.id, elemental_defensive_skill(ed), 1);
 			break;
 
 		case CONTROL_OFFENSIVE:
-			sc_start4(&ed->bl, SC_MODECHANGE, 100, 1, 0, MD_CANATTACK|MD_AGGRESSIVE, 0, 0);
+			sc_start(&ed->bl, SC_EL_OFFENSIVE, 100, 1, 0);
 			break;
 	}
 
-	ShowDebug("Elem Mode: %d\n",ed->battle_status.mode);
-
 	return -1;
-}
-
-int elemental_checkskill(struct elemental_data *ed, int skill_id)
-{
-	int i = skill_id - EL_SKILLBASE;
-
-	if( !ed || !ed->db )
-		return 0;
-	if( ed->db->skill[i].id == skill_id )
-		return ed->db->skill[i].lv;
-
-	return 0;
 }
 
 static bool read_elementaldb_sub(char* str[], int columns, int current)
@@ -1189,25 +1184,13 @@ static bool read_elementaldb_sub(char* str[], int columns, int current)
 	status = &db->status;
 	db->vd.class_ = db->class_;
 
-	status->max_hp = atoi(str[4]);
-	status->max_sp = atoi(str[5]);
-	status->rhw.range = atoi(str[6]);
-	status->rhw.atk = atoi(str[7]);
-	status->rhw.atk2 = status->rhw.atk + atoi(str[8]);
-	status->def = atoi(str[9]);
-	status->mdef = atoi(str[10]);
-	status->str = atoi(str[11]);
-	status->agi = atoi(str[12]);
-	status->vit = atoi(str[13]);
-	status->int_ = atoi(str[14]);
-	status->dex = atoi(str[15]);
-	status->luk = atoi(str[16]);
-	db->range2 = atoi(str[17]);
-	db->range3 = atoi(str[18]);
-	status->size = atoi(str[19]);
-	status->race = atoi(str[20]);
+	status->rhw.range = atoi(str[4]);
+	db->range2 = atoi(str[5]);
+	db->range3 = atoi(str[6]);
+	status->size = atoi(str[7]);
+	status->race = atoi(str[8]);
 
-	ele = atoi(str[21]);
+	ele = atoi(str[9]);
 	status->def_ele = ele%10;
 	status->ele_lv = ele/20;
 	if( status->def_ele >= ELE_MAX )
@@ -1223,10 +1206,8 @@ static bool read_elementaldb_sub(char* str[], int columns, int current)
 
 	status->aspd_amount = 0;
 	status->aspd_rate = 1000;
-	status->speed = atoi(str[22]);
-	status->adelay = atoi(str[23]);
-	status->amotion = atoi(str[24]);
-	status->dmotion = atoi(str[25]);
+	status->speed = atoi(str[10]);
+	status->dmotion = atoi(str[11]);
 
 	return true;
 }
@@ -1234,52 +1215,7 @@ static bool read_elementaldb_sub(char* str[], int columns, int current)
 int read_elementaldb(void)
 {
 	memset(elemental_db,0,sizeof(elemental_db));
-	sv_readdb(db_path, "elemental_db.txt", ',', 26, 26, MAX_ELEMENTAL_CLASS, &read_elementaldb_sub);
-
-	return 0;
-}
-
-static bool read_elemental_skilldb_sub(char* str[], int columns, int current)
-{// <elem id>,<skill id>,<elem mode>
-	struct s_elemental_db *db;
-	int i, class_;
-	int skillid, mode;
-
-	class_ = atoi(str[0]);
-	ARR_FIND(0, MAX_ELEMENTAL_CLASS, i, class_ == elemental_db[i].class_);
-	if( i == MAX_ELEMENTAL_CLASS )
-	{
-		ShowError("read_elemental_skilldb : Class %d not found in elemental_db for skill entry.\n", class_);
-		return false;
-	}
-	
-	skillid = atoi(str[1]);
-	if( skillid < EL_SKILLBASE || skillid >= EL_SKILLBASE + MAX_ELEMSKILL )
-	{
-		ShowError("read_elemental_skilldb : Skill %d out of range.\n", skillid);
-		return false;
-	}
-
-	db = &elemental_db[i];
-
-	mode = atoi(str[2]);
-	if( mode < CONTROL_PASSIVE || mode > CONTROL_OFFENSIVE )
-	{
-		ShowError("read_elemental_skilldb : Mode %d out of range.\n", mode);
-		return false;
-	}
-
-	i = skillid - EL_SKILLBASE;
-	db->skill[i].id = skillid;
-	db->skill[i].lv = 1;// All elemental skills have a max level of 1.
-	db->skill[i].mode = mode;
-
-	return true;
-}
-
-int read_elemental_skilldb(void)
-{
-	sv_readdb(db_path, "elemental_skill_db.txt", ',', 3, 3, -1, &read_elemental_skilldb_sub);
+	sv_readdb(db_path, "elemental_db.txt", ',', 12, 12, MAX_ELEMENTAL_CLASS, &read_elementaldb_sub);
 
 	return 0;
 }
@@ -1287,7 +1223,6 @@ int read_elemental_skilldb(void)
 int do_init_elemental(void)
 {
 	read_elementaldb();
-	read_elemental_skilldb();
 
 	//add_timer_func_list(elemental_summon, "elemental_summon");
 	add_timer_func_list(elem_ai_hard,"elem_ai_hard");

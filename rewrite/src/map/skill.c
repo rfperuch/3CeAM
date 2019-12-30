@@ -1432,24 +1432,24 @@ int skill_additional_effect (struct block_list* src, struct block_list *bl, int 
 				case SC_VITATA_500:		case SC_EXTRACT_SALAMINE_JUICE:	case SC_BOOST500:
 				case SC_FULL_SWING_K:	case SC_MANA_PLUS:		case SC_MUSTLE_M:
 				case SC_LIFE_FORCE_F:
-				// Elementals and Insignias
-				case SC_WATER_BARRIER:	case SC_ZEPHYR:			case SC_POWER_OF_GAIA:
+				// Elementals
+				case SC_EL_WAIT:		case SC_EL_PASSIVE:		case SC_EL_DEFENSIVE:
+				case SC_EL_OFFENSIVE:	case SC_EL_COST:		case SC_CIRCLE_OF_FIRE:
+				case SC_CIRCLE_OF_FIRE_OPTION:	case SC_FIRE_CLOAK:	case SC_FIRE_CLOAK_OPTION:
+				case SC_WATER_SCREEN:	case SC_WATER_SCREEN_OPTION:	case SC_WATER_DROP:
+				case SC_WATER_DROP_OPTION:	case SC_WIND_STEP:	case SC_WIND_STEP_OPTION:
+				case SC_WIND_CURTAIN:	case SC_WIND_CURTAIN_OPTION:	case SC_SOLID_SKIN:
+				case SC_SOLID_SKIN_OPTION:	case SC_STONE_SHIELD:	case SC_STONE_SHIELD_OPTION:
 				case SC_PYROTECHNIC:	case SC_PYROTECHNIC_OPTION:	case SC_HEATER:
 				case SC_HEATER_OPTION:	case SC_TROPIC:			case SC_TROPIC_OPTION:
 				case SC_AQUAPLAY:		case SC_AQUAPLAY_OPTION:	case SC_COOLER:
-				case SC_COOLER_OPTION:	case SC_CHILLY_AIR_OPTION:	case SC_GUST:
-				case SC_GUST_OPTION:	case SC_BLAST:			case SC_BLAST_OPTION:
-				case SC_WILD_STORM:		case SC_WILD_STORM_OPTION:	case SC_PETROLOGY:
-				case SC_PETROLOGY_OPTION:	case SC_CURSED_SOIL:	case SC_CURSED_SOIL_OPTION:
-				case SC_UPHEAVAL:		case SC_UPHEAVAL_OPTION:	case SC_EL_DEFENSIVE:
-				case SC_CIRCLE_OF_FIRE:	case SC_CIRCLE_OF_FIRE_OPTION:	case SC_FIRE_CLOAK:
-				case SC_FIRE_CLOAK_OPTION:	case SC_WATER_SCREEN:	case SC_WATER_SCREEN_OPTION:
-				case SC_WATER_DROP:		case SC_WATER_DROP_OPTION:	case SC_WIND_STEP:
-				case SC_WIND_STEP_OPTION:	case SC_WIND_CURTAIN:	case SC_WIND_CURTAIN_OPTION:
-				case SC_SOLID_SKIN:		case SC_SOLID_SKIN_OPTION:	case SC_STONE_SHIELD:
-				case SC_STONE_SHIELD_OPTION:	case SC_TIDAL_WEAPON:	case SC_TIDAL_WEAPON_OPTION:
-				case SC_ROCK_CRUSHER:	case SC_ROCK_CRUSHER_ATK:	case SC_FIRE_INSIGNIA:
-				case SC_WATER_INSIGNIA:	case SC_WIND_INSIGNIA:	case SC_EARTH_INSIGNIA:
+				case SC_COOLER_OPTION:	case SC_CHILLY_AIR:		case SC_CHILLY_AIR_OPTION:
+				case SC_GUST:			case SC_GUST_OPTION:	case SC_BLAST:
+				case SC_BLAST_OPTION:	case SC_WILD_STORM:		case SC_WILD_STORM_OPTION:
+				case SC_PETROLOGY:		case SC_PETROLOGY_OPTION:	case SC_CURSED_SOIL:
+				case SC_CURSED_SOIL_OPTION:	case SC_UPHEAVAL:	case SC_UPHEAVAL_OPTION:
+				case SC_TIDAL_WEAPON:	case SC_TIDAL_WEAPON_OPTION:	case SC_ROCK_CRUSHER:
+				case SC_ROCK_CRUSHER_ATK:
 				// Mutated Homunculus
 				case SC_NEEDLE_OF_PARALYZE:	case SC_PAIN_KILLER:	case SC_LIGHT_OF_REGENE:
 				case SC_OVERED_BOOST:	case SC_SILENT_BREEZE:	case SC_STYLE_CHANGE:
@@ -7703,24 +7703,24 @@ int skill_castend_nodamage_id (struct block_list *src, struct block_list *bl, in
 				case SC_VITATA_500:		case SC_EXTRACT_SALAMINE_JUICE:	case SC_BOOST500:
 				case SC_FULL_SWING_K:	case SC_MANA_PLUS:		case SC_MUSTLE_M:
 				case SC_LIFE_FORCE_F:
-				// Elementals and Insignias
-				case SC_WATER_BARRIER:	case SC_ZEPHYR:			case SC_POWER_OF_GAIA:
+				// Elementals
+				case SC_EL_WAIT:		case SC_EL_PASSIVE:		case SC_EL_DEFENSIVE:
+				case SC_EL_OFFENSIVE:	case SC_EL_COST:		case SC_CIRCLE_OF_FIRE:
+				case SC_CIRCLE_OF_FIRE_OPTION:	case SC_FIRE_CLOAK:	case SC_FIRE_CLOAK_OPTION:
+				case SC_WATER_SCREEN:	case SC_WATER_SCREEN_OPTION:	case SC_WATER_DROP:
+				case SC_WATER_DROP_OPTION:	case SC_WIND_STEP:	case SC_WIND_STEP_OPTION:
+				case SC_WIND_CURTAIN:	case SC_WIND_CURTAIN_OPTION:	case SC_SOLID_SKIN:
+				case SC_SOLID_SKIN_OPTION:	case SC_STONE_SHIELD:	case SC_STONE_SHIELD_OPTION:
 				case SC_PYROTECHNIC:	case SC_PYROTECHNIC_OPTION:	case SC_HEATER:
 				case SC_HEATER_OPTION:	case SC_TROPIC:			case SC_TROPIC_OPTION:
 				case SC_AQUAPLAY:		case SC_AQUAPLAY_OPTION:	case SC_COOLER:
-				case SC_COOLER_OPTION:	case SC_CHILLY_AIR_OPTION:	case SC_GUST:
-				case SC_GUST_OPTION:	case SC_BLAST:			case SC_BLAST_OPTION:
-				case SC_WILD_STORM:		case SC_WILD_STORM_OPTION:	case SC_PETROLOGY:
-				case SC_PETROLOGY_OPTION:	case SC_CURSED_SOIL:	case SC_CURSED_SOIL_OPTION:
-				case SC_UPHEAVAL:		case SC_UPHEAVAL_OPTION:	case SC_EL_DEFENSIVE:
-				case SC_CIRCLE_OF_FIRE:	case SC_CIRCLE_OF_FIRE_OPTION:	case SC_FIRE_CLOAK:
-				case SC_FIRE_CLOAK_OPTION:	case SC_WATER_SCREEN:	case SC_WATER_SCREEN_OPTION:
-				case SC_WATER_DROP:		case SC_WATER_DROP_OPTION:	case SC_WIND_STEP:
-				case SC_WIND_STEP_OPTION:	case SC_WIND_CURTAIN:	case SC_WIND_CURTAIN_OPTION:
-				case SC_SOLID_SKIN:		case SC_SOLID_SKIN_OPTION:	case SC_STONE_SHIELD:
-				case SC_STONE_SHIELD_OPTION:	case SC_TIDAL_WEAPON:	case SC_TIDAL_WEAPON_OPTION:
-				case SC_ROCK_CRUSHER:	case SC_ROCK_CRUSHER_ATK:	case SC_FIRE_INSIGNIA:
-				case SC_WATER_INSIGNIA:	case SC_WIND_INSIGNIA:	case SC_EARTH_INSIGNIA:
+				case SC_COOLER_OPTION:	case SC_CHILLY_AIR:		case SC_CHILLY_AIR_OPTION:
+				case SC_GUST:			case SC_GUST_OPTION:	case SC_BLAST:
+				case SC_BLAST_OPTION:	case SC_WILD_STORM:		case SC_WILD_STORM_OPTION:
+				case SC_PETROLOGY:		case SC_PETROLOGY_OPTION:	case SC_CURSED_SOIL:
+				case SC_CURSED_SOIL_OPTION:	case SC_UPHEAVAL:	case SC_UPHEAVAL_OPTION:
+				case SC_TIDAL_WEAPON:	case SC_TIDAL_WEAPON_OPTION:	case SC_ROCK_CRUSHER:
+				case SC_ROCK_CRUSHER_ATK:
 				// Mutated Homunculus
 				case SC_NEEDLE_OF_PARALYZE:	case SC_PAIN_KILLER:	case SC_LIGHT_OF_REGENE:
 				case SC_OVERED_BOOST:	case SC_SILENT_BREEZE:	case SC_STYLE_CHANGE:
@@ -9520,24 +9520,24 @@ int skill_castend_nodamage_id (struct block_list *src, struct block_list *bl, in
 				case SC_VITATA_500:		case SC_EXTRACT_SALAMINE_JUICE:	case SC_BOOST500:
 				case SC_FULL_SWING_K:	case SC_MANA_PLUS:		case SC_MUSTLE_M:
 				case SC_LIFE_FORCE_F:
-				// Elementals and Insignias
-				case SC_WATER_BARRIER:	case SC_ZEPHYR:			case SC_POWER_OF_GAIA:
+				// Elementals
+				case SC_EL_WAIT:		case SC_EL_PASSIVE:		case SC_EL_DEFENSIVE:
+				case SC_EL_OFFENSIVE:	case SC_EL_COST:		case SC_CIRCLE_OF_FIRE:
+				case SC_CIRCLE_OF_FIRE_OPTION:	case SC_FIRE_CLOAK:	case SC_FIRE_CLOAK_OPTION:
+				case SC_WATER_SCREEN:	case SC_WATER_SCREEN_OPTION:	case SC_WATER_DROP:
+				case SC_WATER_DROP_OPTION:	case SC_WIND_STEP:	case SC_WIND_STEP_OPTION:
+				case SC_WIND_CURTAIN:	case SC_WIND_CURTAIN_OPTION:	case SC_SOLID_SKIN:
+				case SC_SOLID_SKIN_OPTION:	case SC_STONE_SHIELD:	case SC_STONE_SHIELD_OPTION:
 				case SC_PYROTECHNIC:	case SC_PYROTECHNIC_OPTION:	case SC_HEATER:
 				case SC_HEATER_OPTION:	case SC_TROPIC:			case SC_TROPIC_OPTION:
 				case SC_AQUAPLAY:		case SC_AQUAPLAY_OPTION:	case SC_COOLER:
-				case SC_COOLER_OPTION:	case SC_CHILLY_AIR_OPTION:	case SC_GUST:
-				case SC_GUST_OPTION:	case SC_BLAST:			case SC_BLAST_OPTION:
-				case SC_WILD_STORM:		case SC_WILD_STORM_OPTION:	case SC_PETROLOGY:
-				case SC_PETROLOGY_OPTION:	case SC_CURSED_SOIL:	case SC_CURSED_SOIL_OPTION:
-				case SC_UPHEAVAL:		case SC_UPHEAVAL_OPTION:	case SC_EL_DEFENSIVE:
-				case SC_CIRCLE_OF_FIRE:	case SC_CIRCLE_OF_FIRE_OPTION:	case SC_FIRE_CLOAK:
-				case SC_FIRE_CLOAK_OPTION:	case SC_WATER_SCREEN:	case SC_WATER_SCREEN_OPTION:
-				case SC_WATER_DROP:		case SC_WATER_DROP_OPTION:	case SC_WIND_STEP:
-				case SC_WIND_STEP_OPTION:	case SC_WIND_CURTAIN:	case SC_WIND_CURTAIN_OPTION:
-				case SC_SOLID_SKIN:		case SC_SOLID_SKIN_OPTION:	case SC_STONE_SHIELD:
-				case SC_STONE_SHIELD_OPTION:	case SC_TIDAL_WEAPON:	case SC_TIDAL_WEAPON_OPTION:
-				case SC_ROCK_CRUSHER:	case SC_ROCK_CRUSHER_ATK:	case SC_FIRE_INSIGNIA:
-				case SC_WATER_INSIGNIA:	case SC_WIND_INSIGNIA:	case SC_EARTH_INSIGNIA:
+				case SC_COOLER_OPTION:	case SC_CHILLY_AIR:		case SC_CHILLY_AIR_OPTION:
+				case SC_GUST:			case SC_GUST_OPTION:	case SC_BLAST:
+				case SC_BLAST_OPTION:	case SC_WILD_STORM:		case SC_WILD_STORM_OPTION:
+				case SC_PETROLOGY:		case SC_PETROLOGY_OPTION:	case SC_CURSED_SOIL:
+				case SC_CURSED_SOIL_OPTION:	case SC_UPHEAVAL:	case SC_UPHEAVAL_OPTION:
+				case SC_TIDAL_WEAPON:	case SC_TIDAL_WEAPON_OPTION:	case SC_ROCK_CRUSHER:
+				case SC_ROCK_CRUSHER_ATK:
 				// Mutated Homunculus
 				case SC_NEEDLE_OF_PARALYZE:	case SC_PAIN_KILLER:	case SC_LIGHT_OF_REGENE:
 				case SC_OVERED_BOOST:	case SC_SILENT_BREEZE:	case SC_STYLE_CHANGE:
@@ -10429,12 +10429,9 @@ int skill_castend_nodamage_id (struct block_list *src, struct block_list *bl, in
 		if ( sd )
 		{
 			if ( sd->ed )
-			{// Trying to set to a control state its already in? Set it to Wait.
-				if ( skilllv == sd->ed->state.control_state )
-					elemental_set_control_state(sd->ed, CONTROL_WAIT);
-				// Lv 1 - Passive, Lv 2 - Defensive, Lv 3 - Offensive
-				else if ( skilllv >= 1 && skilllv <= 3 )
-					elemental_set_control_state(sd->ed, skilllv);
+			{// Lv 1 - Passive, Lv 2 - Defensive, Lv 3 - Offensive
+				if ( skilllv >= 1 && skilllv <= 3 )
+					elemental_set_control_mode(sd->ed, skilllv);
 				// Lv 4 - Ends the summon.
 				else if ( skilllv == 4 )
 					elem_delete(sd->ed, 0);

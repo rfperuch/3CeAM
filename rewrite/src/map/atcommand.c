@@ -8089,11 +8089,6 @@ ACMD_FUNC(eleminfo)
 		minutes, seconds);
 	clif_displaymessage(fd, atcmd_output);
 
-	// Temp code to help with seeing regen rates.
-	snprintf(atcmd_output, sizeof(atcmd_output) ,"HP/SP Regen Rate : %d%%/%d%%",
-		ed->regen.rate.hp, ed->regen.rate.sp);
-	clif_displaymessage(fd, atcmd_output);
-
 	return 0;
 }
 

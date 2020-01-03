@@ -3401,6 +3401,61 @@ int status_calc_mercenary_(struct mercenary_data *md, bool first)
 	return 0;
 }
 
+int status_calc_elemental_(struct elemental_data *ed, bool first)
+{
+	struct status_data *status = &ed->base_status;
+	struct s_elemental *elem = &ed->elemental;
+
+	if( first )
+	{
+		memcpy(status, &ed->db->status, sizeof(struct status_data));
+		//status->def_ele =  db->element;
+		//status->ele_lv = 1;
+		//status->race = db->race;
+		//status->size = db->size;
+		//status->rhw.range = db->range;
+		status->mode = MD_CANMOVE;
+		status->speed = DEFAULT_WALK_SPEED;
+
+		if (battle_config.elemental_masters_walk_speed && ed->master)
+			status->speed = status_get_speed(&ed->master->bl);
+	}
+
+	// Elementals don't have stats but as with monsters we must give them at least 1 of each
+	// to avoid any possible divisions by 0. These won't affect their sub-stats.
+	// Note: A confirm on this would be nice. How can they have any natural immunity to common status's without stats??? [Rytech]
+	status->str = status->agi = status->vit = status->int_ = status->dex = status->luk = 1;
+
+	// Zero out the sub-stats elementals arn't affected by.
+	status->batk = status->def2 = status->mdef2 = status->cri = status->flee2 = 0;
+
+	// Set sub-stats to what was given on creation/load.
+	status->max_hp = elem->max_hp;
+	status->max_sp = elem->max_sp;
+	status->rhw.atk = status->rhw.atk2 = elem->batk;
+	status->matk_min = status->matk_max = elem->matk;
+	status->def = elem->def;
+	status->mdef = elem->mdef;
+	status->hit = elem->hit;
+	status->flee = elem->flee;
+	status->amotion = elem->amotion;
+
+	if ( first )
+	{// Set current HP after Max HP/SP is set on creation/load.
+		ed->battle_status.hp = elem->hp;
+		ed->battle_status.sp = elem->sp;
+	}
+
+	// Set other things needed.
+	status->aspd_amount = 0;
+	status->aspd_rate = 1000;
+	status->adelay = 2 * status->amotion;
+
+	status_cpy(&ed->battle_status, status);
+
+	return 0;
+}
+
 int status_calc_homunculus_(struct homun_data *hd, bool first)
 {
 	const struct status_change *sc = &hd->sc;
@@ -3481,155 +3536,6 @@ int status_calc_homunculus_(struct homun_data *hd, bool first)
 	status_cpy(&hd->battle_status, status);
 
 	return 1;
-}
-
-int status_calc_elemental_(struct elemental_data *ed, bool first)
-{
-	struct status_data *status = &ed->base_status;
-	struct s_elemental *elem = &ed->elemental;
-	struct map_session_data *sd;
-	struct status_data *mstatus = &ed->master->base_status;
-	int skill;
-	int amotion;
-	unsigned char elem_size;
-
-	sd = ed->master;
-
-	if (!sd)
-		return 0;
-
-	if( first )
-	{
-		//const struct s_elemental_db *db = ed->db;
-		memcpy(status, &ed->db->status, sizeof(struct status_data));
-		//status->def_ele =  db->element;
-		//status->ele_lv = 1;
-		//status->race = db->race;
-		//status->size = db->size;
-		//status->rhw.range = db->range;
-		status->mode = MD_CANMOVE;
-		//status->hp = status->max_hp;
-		//status->sp = status->max_sp;
-		//ed->battle_status.hp = elem->hp;
-		//ed->battle_status.sp = elem->sp;
-
-		status->speed = DEFAULT_WALK_SPEED;
-		if (battle_config.elemental_masters_walk_speed && ed->master)
-			status->speed = status_get_speed(&ed->master->bl);
-	}
-
-	// Elementals don't have stats but as with monsters we must give them at least 1 of each
-	// to avoid any possible divisions by 0. These won't affect their sub-stats.
-	// Note: A confirm on this would be nice. How can they have any natural immunity to common status's without stats??? [Rytech]
-	status->str = status->agi = status->vit = status->int_ = status->dex = status->luk = 1;
-
-	// Zero out the sub-stats elementals arn't affected by.
-	status->batk = status->def2 = status->mdef2 = status->cri = status->flee2 = 0;
-
-	// Sub-stats are affected by the elemental's summon level but each level has a different size.
-	// So we use this size to affect the formula's. This is also true in official.
-	elem_size = 1 + status->size;
-
-	// MaxHP = (10 * (Master's INT + 2 * Master's JobLV)) * ((ElemLV + 2) / 3.0) + (Master's MaxHP / 3)
-	// MaxSP = Master's MaxSP / 4
-	status->max_hp = (10 * (mstatus->int_ + 2 * status_get_job_lv_effect(&sd->bl))) * ((elem_size + 2) / 3) + mstatus->max_hp / 3;
-	status->max_sp = mstatus->max_sp / 4;
-
-	// MaxHP/MaxSP + 5% * SkillLV
-	if((skill=pc_checkskill(sd,SO_EL_SYMPATHY)) > 0)
-	{
-		status->max_hp += status->max_hp * (5 * skill) / 100;
-		status->max_sp += status->max_sp * (5 * skill) / 100;
-	}
-
-	if( status->max_hp > battle_config.max_elemental_hp )
-		status->max_hp = battle_config.max_elemental_hp;
-
-	if( status->max_sp > battle_config.max_elemental_sp )
-		status->max_sp = battle_config.max_elemental_sp;
-
-	if (first)
-	{
-//		ed->battle_status.hp = elem->hp;
-//		ed->battle_status.sp = elem->sp;
-
-		// Temp solution to get HP/SP maxed on spawn.
-		ed->battle_status.hp = status->max_hp;
-		ed->battle_status.sp = status->max_sp;
-	}
-
-	// ATK = Owner's MaxSP / (18 / ElemLV)
-	// MATK (Official) = ElemLV * (Owner's INT / 2 + Owner's DEX / 4)
-	// MATK (Custom) = ElemLV * (Master's INT + (Master's INT / 5) * (Master's DEX / 5)) / 3
-	// Custom formula used for MATK since renewals MATK formula is greatly different from pre-re.
-	status->rhw.atk = status->rhw.atk2 = mstatus->max_sp / (18 / elem_size);
-	status->matk_min = status->matk_max = elem_size * (mstatus->int_ + (mstatus->int_ / 5) * (mstatus->dex / 5)) / 3;
-
-	// ATK/MATK + 25 * SkillLV
-	if((skill=pc_checkskill(sd,SO_EL_SYMPATHY)) > 0)
-	{
-		status->rhw.atk = status->rhw.atk2 += 25 * skill;
-		status->matk_min = status->matk_max += 25 * skill;
-	}
-
-	// DEF (Official) = Master's DEF + Master's BaseLV / (5 - ElemLV)
-	// DEF (Custom) = Master's DEF + Master's BaseLV / (5 - ElemLV) / 10
-	// Custom formula used to balance the bonus DEF part for pre-re.
-	skill = mstatus->def + status_get_base_lv_effect(&sd->bl) / (5 - elem_size) / 10;
-	status->def = cap_value(skill, 0, battle_config.max_elemental_def_mdef);
-
-	// MDEF (Official) = Master's MDEF + Master's INT / (5 - ElemLV)
-	// MDEF (Custom) = Master's MDEF + Master's INT / (5 - ElemLV) / 10
-	// Custom formula used to balance the bonus MDEF part for pre-re.
-	skill = mstatus->mdef + mstatus->int_ / (5 - elem_size) / 10;
-	status->mdef = cap_value(skill, 0, battle_config.max_elemental_def_mdef);
-
-	// HIT = Master's HIT + Master's JobLV
-	// 2011 document made a mistake saying the master's BaseLV affects this. Its acturally JobLV.
-	status->hit = mstatus->hit + status_get_job_lv_effect(&sd->bl);
-
-	// FLEE = Master's FLEE + Master's BaseLV / (5 - ElemLV)
-	status->flee = mstatus->flee + status_get_base_lv_effect(&sd->bl) / (5 - elem_size);
-
-	// ASPD (aMotion) = 750 - 45 / ElemLV - Master's BaseLV - Master's DEX
-	// 2011 balance document says the formula is "ASPD 150 + Master's DEX / 10 + ElemLV * 3".
-	// But im seeing a completely different formula for this and a cap for it too.
-	// Seriously, where did they get that formula from? I can't find it anywhere. [Rytech]
-	status->aspd_amount = 0;
-	status->aspd_rate = 1000;
-	amotion = 750 - 45 / elem_size - status_get_base_lv_effect(&sd->bl) - mstatus->dex;
-	if ( amotion < 400 )// ASPD capped at 160.
-		amotion = 400;
-	status->amotion = cap_value(amotion,battle_config.max_aspd,2000);
-	status->adelay = 2 * status->amotion;
-
-	// Bonus sub-stats given depending on the elemental type and its summon level.
-	switch ( elemental_get_type(ed) )
-	{
-		case ELEMTYPE_AGNI:// Agni - Bonus ATK/HIT
-			status->rhw.atk = status->rhw.atk2 += 20 * elem_size;
-			status->hit += 10 * elem_size;
-			break;
-
-		case ELEMTYPE_AQUA:// Aqua - Bonus MATK/MDEF
-			status->matk_min = status->matk_max += 20 * elem_size;
-			status->mdef += 10 * elem_size / 10;
-			break;
-
-		case ELEMTYPE_VENTUS:// Ventus - Bonus MATK/FLEE
-			status->matk_min = status->matk_max += 10 * elem_size;
-			status->flee += 20 * elem_size;
-			break;
-
-		case ELEMTYPE_TERA:// Tera - Bonus ATK/DEF
-			status->rhw.atk = status->rhw.atk2 += 5 * elem_size;
-			status->def += 25 * elem_size / 10;
-			break;
-	}
-
-	status_cpy(&ed->battle_status, status);
-
-	return 0;
 }
 
 static unsigned short status_calc_str(struct block_list *,struct status_change *,int);

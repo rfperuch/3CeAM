@@ -134,6 +134,29 @@ CREATE TABLE IF NOT EXISTS `charlog` (
 ) ENGINE=MyISAM; 
 
 --
+-- Table structure for table `elemental`
+--
+
+CREATE TABLE IF NOT EXISTS `elemental` (
+  `ele_id` int(11) unsigned NOT NULL auto_increment,
+  `char_id` int(11) NOT NULL,
+  `class` mediumint(9) unsigned NOT NULL default '0',
+  `hp` mediumint(8) unsigned NOT NULL default '1',
+  `max_hp` mediumint(8) unsigned NOT NULL default '1',
+  `sp` mediumint(8) unsigned NOT NULL default '1',
+  `max_sp` mediumint(8) unsigned NOT NULL default '1',
+  `batk` smallint(5) unsigned NOT NULL default '1',
+  `matk` smallint(5) unsigned NOT NULL default '1',
+  `def` smallint(5) unsigned NOT NULL default '0',
+  `mdef` smallint(5) unsigned NOT NULL default '0',
+  `hit` smallint(5) unsigned NOT NULL default '1',
+  `flee` smallint(5) unsigned NOT NULL default '1',
+  `amotion` smallint(5) unsigned NOT NULL default '500',
+  `life_time` int(11) NOT NULL default '0',
+  PRIMARY KEY  (`ele_id`)
+) ENGINE=MyISAM;
+
+--
 -- Table structure for table `friends`
 --
 
@@ -554,29 +577,6 @@ CREATE TABLE IF NOT EXISTS `pet` (
   `rename_flag` tinyint(4) unsigned NOT NULL default '0',
   `incuvate` int(11) unsigned NOT NULL default '0',
   PRIMARY KEY  (`pet_id`)
-) ENGINE=MyISAM;
-
---
--- Table structure for table `elemental`
---
-
-CREATE TABLE IF NOT EXISTS `elemental` (
-  `ele_id` int(11) unsigned NOT NULL auto_increment,
-  `char_id` int(11) NOT NULL,
-  `class` mediumint(9) unsigned NOT NULL default '0',
-  `mode` int(11) unsigned NOT NULL default '1',
-  `hp` int(12) NOT NULL default '1',
-  `sp` int(12) NOT NULL default '1',
-  `max_hp` mediumint(8) unsigned NOT NULL default '0',
-  `max_sp` mediumint(6) unsigned NOT NULL default '0',
-  `str` smallint(4) unsigned NOT NULL default '0',
-  `agi` smallint(4) unsigned NOT NULL default '0',
-  `vit` smallint(4) unsigned NOT NULL default '0',
-  `int` smallint(4) unsigned NOT NULL default '0',
-  `dex` smallint(4) unsigned NOT NULL default '0',
-  `luk` smallint(4) unsigned NOT NULL default '0',
-  `life_time` int(11) NOT NULL default '0',
-  PRIMARY KEY  (`ele_id`)
 ) ENGINE=MyISAM;
 
 --

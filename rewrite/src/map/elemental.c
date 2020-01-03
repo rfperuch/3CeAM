@@ -73,21 +73,112 @@ int elem_create(struct map_session_data *sd, int class_, unsigned int lifetime)
 {
 	struct s_elemental elem;
 	struct s_elemental_db *db;
-	int i;
+	struct status_data *mstatus;
+	unsigned char elem_size;
+	int i, skill, amotion;
+
 	nullpo_retr(1,sd);
 
 	if( (i = elem_search_index(class_)) < 0 )
 		return 0;
+
+	mstatus = &sd->battle_status;
 
 	db = &elemental_db[i];
 	memset(&elem,0,sizeof(struct s_elemental));
 
 	elem.char_id = sd->status.char_id;
 	elem.class_ = class_;
-	//elem.hp = db->status.max_hp;
-	//elem.sp = db->status.max_sp;
-	elem.hp = 100;
-	elem.sp = 100;
+
+	// Sub-stats are affected by the elemental's summon level but each level has a different size.
+	// So we use this size to affect the formula's. This is also true in official.
+	elem_size = 1 + db->status.size;
+
+	// MaxHP = (10 * (Master's INT + 2 * Master's JobLV)) * ((ElemLV + 2) / 3.0) + (Master's MaxHP / 3)
+	// MaxSP = Master's MaxSP / 4
+	elem.max_hp = (10 * (mstatus->int_ + 2 * status_get_job_lv_effect(&sd->bl))) * ((elem_size + 2) / 3) + mstatus->max_hp / 3;
+	elem.max_sp = mstatus->max_sp / 4;
+
+	// MaxHP/MaxSP + 5% * SkillLV
+	if((skill=pc_checkskill(sd,SO_EL_SYMPATHY)) > 0)
+	{
+		elem.max_hp += elem.max_hp * (5 * skill) / 100;
+		elem.max_sp += elem.max_sp * (5 * skill) / 100;
+	}
+
+	if( elem.max_hp > battle_config.max_elemental_hp )
+		elem.max_hp = battle_config.max_elemental_hp;
+
+	if( elem.max_sp > battle_config.max_elemental_sp )
+		elem.max_sp = battle_config.max_elemental_sp;
+
+	elem.hp = elem.max_hp;
+	elem.sp = elem.max_sp;
+
+	// ATK = Owner's MaxSP / (18 / ElemLV)
+	// MATK (Official) = ElemLV * (Owner's INT / 2 + Owner's DEX / 4)
+	// MATK (Custom) = ElemLV * (Master's INT + (Master's INT / 5) * (Master's DEX / 5)) / 3
+	// Custom formula used for MATK since renewals MATK formula is greatly different from pre-re.
+	elem.batk = mstatus->max_sp / (18 / elem_size);
+	elem.matk = elem_size * (mstatus->int_ + (mstatus->int_ / 5) * (mstatus->dex / 5)) / 3;
+
+	// ATK/MATK + 25 * SkillLV
+	if((skill=pc_checkskill(sd,SO_EL_SYMPATHY)) > 0)
+	{
+		elem.batk += 25 * skill;
+		elem.matk += 25 * skill;
+	}
+
+	// DEF (Official) = Master's DEF + Master's BaseLV / (5 - ElemLV)
+	// DEF (Custom) = Master's DEF + Master's BaseLV / (5 - ElemLV) / 10
+	// Custom formula used to balance the bonus DEF part for pre-re.
+	skill = mstatus->def + status_get_base_lv_effect(&sd->bl) / (5 - elem_size) / 10;
+	elem.def = cap_value(skill, 0, battle_config.max_elemental_def_mdef);
+
+	// MDEF (Official) = Master's MDEF + Master's INT / (5 - ElemLV)
+	// MDEF (Custom) = Master's MDEF + Master's INT / (5 - ElemLV) / 10
+	// Custom formula used to balance the bonus MDEF part for pre-re.
+	skill = mstatus->mdef + mstatus->int_ / (5 - elem_size) / 10;
+	elem.mdef = cap_value(skill, 0, battle_config.max_elemental_def_mdef);
+
+	// HIT = Master's HIT + Master's JobLV
+	// 2011 document made a mistake saying the master's BaseLV affects this. Its acturally JobLV.
+	elem.hit = mstatus->hit + status_get_job_lv_effect(&sd->bl);
+
+	// FLEE = Master's FLEE + Master's BaseLV / (5 - ElemLV)
+	elem.flee = mstatus->flee + status_get_base_lv_effect(&sd->bl) / (5 - elem_size);
+
+	// ASPD (aMotion) = 750 - 45 / ElemLV - Master's BaseLV - Master's DEX
+	// 2011 balance document says the formula is "ASPD 150 + Master's DEX / 10 + ElemLV * 3".
+	// But im seeing a completely different formula for this and a cap for it too.
+	// Seriously, where did they get that formula from? I can't find it anywhere. [Rytech]
+	amotion = 750 - 45 / elem_size - status_get_base_lv_effect(&sd->bl) - mstatus->dex;
+	if ( amotion < 400 )// ASPD capped at 160.
+		amotion = 400;
+	elem.amotion = cap_value(amotion,battle_config.max_aspd,2000);
+
+	// Bonus sub-stats given depending on the elemental type and its summon level.
+	if ( class_ >= MOBID_EL_AGNI_S && class_ <= MOBID_EL_AGNI_L )
+	{// Agni - Bonus ATK/HIT
+		elem.batk += 20 * elem_size;
+		elem.hit += 10 * elem_size;
+	}
+	if ( class_ >= MOBID_EL_AQUA_S && class_ <= MOBID_EL_AQUA_L )
+	{// Aqua - Bonus MATK/MDEF
+		elem.matk += 20 * elem_size;
+		elem.mdef += 10 * elem_size / 10;
+	}
+	if ( class_ >= MOBID_EL_VENTUS_S && class_ <= MOBID_EL_VENTUS_L )
+	{// Ventus - Bonus MATK/FLEE
+		elem.matk += 10 * elem_size;
+		elem.flee += 20 * elem_size;
+	}
+	if ( class_ >= MOBID_EL_TERA_S && class_ <= MOBID_EL_TERA_L )
+	{// Tera - Bonus ATK/DEF
+		elem.batk += 5 * elem_size;
+		elem.def += 25 * elem_size / 10;
+	}
+
 	elem.life_time = lifetime;
 
 #ifdef TXT_ONLY// Bypass the char server for TXT.
@@ -132,7 +223,7 @@ int elemental_get_type(struct elemental_data *ed)
 }
 
 int elemental_save(struct elemental_data *ed)
-{
+{// Send only HP/SP/Life_Time since these are the only variables that change.
 	ed->elemental.hp = ed->battle_status.hp;
 	ed->elemental.sp = ed->battle_status.sp;
 	ed->elemental.life_time = elemental_get_lifetime(ed);
@@ -160,7 +251,7 @@ static int elem_summon_end(int tid, unsigned int tick, int id, intptr data)
 	}
 
 	ed->summon_timer = INVALID_TIMER;
-	elem_delete(ed, 0); // Elemental summon time is over.
+	elem_delete(ed, 0);// Elemental summon time is over.
 
 	return 0;
 }

@@ -1606,11 +1606,11 @@ int delete_char_sql(int char_id)
 {
 	char name[NAME_LENGTH];
 	char esc_name[NAME_LENGTH*2+1]; //Name needs be escaped.
-	int account_id, party_id, guild_id, hom_id, base_level, partner_id, father_id, mother_id;
+	int account_id, party_id, guild_id, hom_id, ele_id, base_level, partner_id, father_id, mother_id;
 	char* data;
 	size_t len;
 
-	if( SQL_ERROR == Sql_Query(sql_handle, "SELECT `name`,`account_id`,`party_id`,`guild_id`,`base_level`,`homun_id`,`partner_id`,`father`,`mother` FROM `%s` WHERE `char_id`='%d'", char_db, char_id) )
+	if( SQL_ERROR == Sql_Query(sql_handle, "SELECT `name`,`account_id`,`party_id`,`guild_id`,`base_level`,`homun_id`,`elemental_id`,`partner_id`,`father`,`mother` FROM `%s` WHERE `char_id`='%d'", char_db, char_id) )
 		Sql_ShowDebug(sql_handle);
 
 	if( SQL_SUCCESS != Sql_NextRow(sql_handle) )
@@ -1626,9 +1626,10 @@ int delete_char_sql(int char_id)
 	Sql_GetData(sql_handle, 3, &data, NULL); guild_id = atoi(data);
 	Sql_GetData(sql_handle, 4, &data, NULL); base_level = atoi(data);
 	Sql_GetData(sql_handle, 5, &data, NULL); hom_id = atoi(data);
-	Sql_GetData(sql_handle, 6, &data, NULL); partner_id = atoi(data);
-	Sql_GetData(sql_handle, 7, &data, NULL); father_id = atoi(data);
-	Sql_GetData(sql_handle, 8, &data, NULL); mother_id = atoi(data);
+	Sql_GetData(sql_handle, 6, &data, NULL); ele_id = atoi(data);
+	Sql_GetData(sql_handle, 7, &data, NULL); partner_id = atoi(data);
+	Sql_GetData(sql_handle, 8, &data, NULL); father_id = atoi(data);
+	Sql_GetData(sql_handle, 9, &data, NULL); mother_id = atoi(data);
 
 	Sql_EscapeStringLen(sql_handle, esc_name, name, min(len, NAME_LENGTH));
 	Sql_FreeResult(sql_handle);
@@ -1684,6 +1685,10 @@ int delete_char_sql(int char_id)
 
 	/* remove mercenary data */ 
 	mercenary_owner_delete(char_id);
+
+	/* remove elemental */ 
+	if( ele_id )
+		mapif_elemental_delete(ele_id);
 
 	/* delete char's friends list */
 	if( SQL_ERROR == Sql_Query(sql_handle, "DELETE FROM `%s` WHERE `char_id` = '%d'", friend_db, char_id) )

@@ -1011,25 +1011,25 @@ void initChangeTables(void)
 	StatusChangeFlagTable[SC_SPIRITOFLAND_PERFECTDODGE] = SCB_FLEE2;
 
 	//StatusChangeFlagTable[SC_CIRCLE_OF_FIRE_OPTION] |= SCB_NONE;
-	//StatusChangeFlagTable[SC_FIRE_CLOAK_OPTION] |= SCB_NONE;
+	StatusChangeFlagTable[SC_FIRE_CLOAK_OPTION] |= SCB_ALL;
 	//StatusChangeFlagTable[SC_WATER_SCREEN_OPTION] |= SCB_NONE;
-	//StatusChangeFlagTable[SC_WATER_DROP_OPTION] |= SCB_NONE;
+	StatusChangeFlagTable[SC_WATER_DROP_OPTION] |= SCB_ALL;
 	//StatusChangeFlagTable[SC_WIND_STEP_OPTION] |= SCB_NONE;
-	//StatusChangeFlagTable[SC_WIND_CURTAIN_OPTION] |= SCB_NONE;
+	StatusChangeFlagTable[SC_WIND_CURTAIN_OPTION] |= SCB_ALL;
 	//StatusChangeFlagTable[SC_SOLID_SKIN_OPTION] |= SCB_NONE;
-	//StatusChangeFlagTable[SC_STONE_SHIELD_OPTION] |= SCB_NONE;
-	//StatusChangeFlagTable[SC_PYROTECHNIC_OPTION] |= SCB_NONE;
-	//StatusChangeFlagTable[SC_HEATER_OPTION] |= SCB_NONE;
-	//StatusChangeFlagTable[SC_TROPIC_OPTION] |= SCB_NONE;
-	//StatusChangeFlagTable[SC_AQUAPLAY_OPTION] |= SCB_NONE;
-	//StatusChangeFlagTable[SC_COOLER_OPTION] |= SCB_NONE;
-	//StatusChangeFlagTable[SC_CHILLY_AIR_OPTION] |= SCB_NONE;
-	//StatusChangeFlagTable[SC_GUST_OPTION] |= SCB_NONE;
-	//StatusChangeFlagTable[SC_BLAST_OPTION] |= SCB_NONE;
-	//StatusChangeFlagTable[SC_WILD_STORM_OPTION] |= SCB_NONE;
-	//StatusChangeFlagTable[SC_PETROLOGY_OPTION] |= SCB_NONE;
-	//StatusChangeFlagTable[SC_CURSED_SOIL_OPTION] |= SCB_NONE;
-	//StatusChangeFlagTable[SC_UPHEAVAL_OPTION] |= SCB_NONE;
+	StatusChangeFlagTable[SC_STONE_SHIELD_OPTION] |= SCB_ALL;
+	StatusChangeFlagTable[SC_PYROTECHNIC_OPTION] |= SCB_WATK;
+	StatusChangeFlagTable[SC_HEATER_OPTION] |= SCB_WATK;
+	StatusChangeFlagTable[SC_TROPIC_OPTION] |= SCB_WATK;
+	StatusChangeFlagTable[SC_AQUAPLAY_OPTION] |= SCB_MATK;
+	StatusChangeFlagTable[SC_COOLER_OPTION] |= SCB_MATK;
+	StatusChangeFlagTable[SC_CHILLY_AIR_OPTION] |= SCB_MATK;
+	StatusChangeFlagTable[SC_GUST_OPTION] |= SCB_ASPD;
+	StatusChangeFlagTable[SC_BLAST_OPTION] |= SCB_ASPD;
+	StatusChangeFlagTable[SC_WILD_STORM_OPTION] |= SCB_ASPD;
+	StatusChangeFlagTable[SC_PETROLOGY_OPTION] |= SCB_MAXHP;
+	StatusChangeFlagTable[SC_CURSED_SOIL_OPTION] |= SCB_MAXHP;
+	StatusChangeFlagTable[SC_UPHEAVAL_OPTION] |= SCB_MAXHP;
 	//StatusChangeFlagTable[SC_TIDAL_WEAPON_OPTION] |= SCB_NONE;
 
 	StatusChangeFlagTable[SC_STOMACHACHE] |= SCB_STR|SCB_AGI|SCB_VIT|SCB_INT|SCB_DEX|SCB_LUK;
@@ -3305,11 +3305,6 @@ int status_calc_pc_(struct map_session_data* sd, bool first)
 		sd->subrace[RC_DEMON] += skill;
 		sd->subele[ELE_DARK] += skill;
 	}
-	if( (skill = pc_checkskill(sd,NC_RESEARCHFE)) > 0 )
-	{
-		sd->subele[ELE_EARTH] += skill * 10;
-		sd->subele[ELE_FIRE] += skill * 10;
-	}
 
 	if( sc->count )
 	{
@@ -3349,6 +3344,11 @@ int status_calc_pc_(struct map_session_data* sd, bool first)
 			sd->subele[ELE_EARTH] += sc->data[SC_ARMOR_RESIST]->val2;
 			sd->subele[ELE_FIRE] += sc->data[SC_ARMOR_RESIST]->val3;
 			sd->subele[ELE_WIND] += sc->data[SC_ARMOR_RESIST]->val4;
+		}
+		if( sc->data[SC_FIRE_CLOAK_OPTION] )
+		{
+			sd->subele[ELE_FIRE] += 100;
+			sd->subele[ELE_WATER] -= 100;
 		}
 	}
 
@@ -4900,6 +4900,12 @@ static unsigned short status_calc_watk(struct block_list *bl, struct status_chan
 		watk += 50 + 20 * sc->data[SC_ANGRIFFS_MODUS]->val1;
 	if(sc->data[SC_PYROCLASTIC])
 		watk += sc->data[SC_PYROCLASTIC]->val2;
+	if(sc->data[SC_PYROTECHNIC_OPTION])
+		watk += 60;
+	if(sc->data[SC_HEATER_OPTION])
+		watk += 120;
+	if(sc->data[SC_TROPIC_OPTION])
+		watk += 180;
 	if(sc->data[SC_FULL_SWING_K])
 		watk += sc->data[SC_FULL_SWING_K]->val1;
 	if(sc->data[SC_INCATKRATE])
@@ -8816,14 +8822,13 @@ int status_change_start(struct block_list* bl,enum sc_type type,int rate,int val
 			val_flag |= 1|2;
 			val3 = 0;
 			break;
-		case SC_WARMER:
-			status_change_end(bl, SC_FREEZE, -1);
-			status_change_end(bl, SC_FROST, -1);
-			status_change_end(bl, SC_CRYSTALIZE, -1);
-			break;
 		case SC_STRIKING:
 			val4 = tick / 1000;
 			tick = 1000;
+			break;
+		case SC_WARMER:
+			val4 = tick / 3000;
+			tick = 3000;
 			break;
 		case SC_BLOOD_SUCKER:
 			val4 = tick / 1000;
@@ -9344,6 +9349,71 @@ int status_change_start(struct block_list* bl,enum sc_type type,int rate,int val
 			sc_start4(bl, SC_MODECHANGE, 100, 1, 0, MD_CANATTACK|MD_AGGRESSIVE, 0, 0);
 			tick = -1;// Keep active until requested to end.
 			break;
+
+		case SC_CIRCLE_OF_FIRE:
+		case SC_FIRE_CLOAK:
+		case SC_WATER_SCREEN:
+		case SC_WATER_DROP:
+		case SC_WIND_STEP:
+		case SC_WIND_CURTAIN:
+		case SC_SOLID_SKIN:
+		case SC_STONE_SHIELD:
+		case SC_PYROTECHNIC:
+		case SC_HEATER:
+		case SC_TROPIC:
+		case SC_AQUAPLAY:
+		case SC_COOLER:
+		case SC_CHILLY_AIR:
+		case SC_GUST:
+		case SC_BLAST:
+		case SC_WILD_STORM:
+		case SC_PETROLOGY:
+		case SC_CURSED_SOIL:
+		case SC_UPHEAVAL:
+		case SC_TIDAL_WEAPON:
+			sc_start(&ed->master->bl, type+1, 100, 1, 0);
+			break;
+
+		case SC_CIRCLE_OF_FIRE_OPTION:
+		case SC_FIRE_CLOAK_OPTION:
+		case SC_WATER_SCREEN_OPTION:
+		case SC_WATER_DROP_OPTION:
+		case SC_WIND_STEP_OPTION:
+		case SC_WIND_CURTAIN_OPTION:
+		case SC_SOLID_SKIN_OPTION:
+		case SC_STONE_SHIELD_OPTION:
+		case SC_PYROTECHNIC_OPTION:
+		case SC_HEATER_OPTION:
+		case SC_TROPIC_OPTION:
+		case SC_AQUAPLAY_OPTION:
+		case SC_COOLER_OPTION:
+		case SC_CHILLY_AIR_OPTION:
+		case SC_GUST_OPTION:
+		case SC_BLAST_OPTION:
+		case SC_WILD_STORM_OPTION:
+		case SC_PETROLOGY_OPTION:
+		case SC_CURSED_SOIL_OPTION:
+		case SC_UPHEAVAL_OPTION:
+		case SC_TIDAL_WEAPON_OPTION:
+			{
+				switch ( type )
+				{
+					case SC_PYROTECHNIC_OPTION:
+						val2 = status_get_job_lv_effect(bl) / 3;// Skill Damage Increase
+						break;
+					case SC_HEATER_OPTION:
+						val2 = status_get_job_lv_effect(bl) / 2;// Skill Damage Increase
+						break;
+					case SC_TROPIC_OPTION:
+						val2 = status_get_job_lv_effect(bl) / 2;// Autocast Chance
+						val3 = status_get_job_lv_effect(bl) / 10;// Autocasted Skill LV
+						break;
+				}
+
+				tick = -1;
+			}
+			break;
+
 		default:
 			if( calc_flag == SCB_NONE && StatusSkillChangeTable[type] == 0 && StatusIconChangeTable[type] == 0 )
 			{	//Status change with no calc, no icon, and no skill associated...? 
@@ -10383,6 +10453,30 @@ int status_change_end(struct block_list* bl, enum sc_type type, int tid)
 			if ( ed->state.alive == 1 )
 				sc_start(bl, SC_EL_WAIT, 100, 1, 0);
 			break;
+
+		case SC_CIRCLE_OF_FIRE:
+		case SC_FIRE_CLOAK:
+		case SC_WATER_SCREEN:
+		case SC_WATER_DROP:
+		case SC_WIND_STEP:
+		case SC_WIND_CURTAIN:
+		case SC_SOLID_SKIN:
+		case SC_STONE_SHIELD:
+		case SC_PYROTECHNIC:
+		case SC_HEATER:
+		case SC_TROPIC:
+		case SC_AQUAPLAY:
+		case SC_COOLER:
+		case SC_CHILLY_AIR:
+		case SC_GUST:
+		case SC_BLAST:
+		case SC_WILD_STORM:
+		case SC_PETROLOGY:
+		case SC_CURSED_SOIL:
+		case SC_UPHEAVAL:
+		case SC_TIDAL_WEAPON:
+			status_change_end(&ed->master->bl, type+1, INVALID_TIMER);
+			break;
 		}
 
 	opt_flag = 1;
@@ -11408,6 +11502,23 @@ int status_change_timer(int tid, unsigned int tick, int id, intptr data)
 		{
 			if( !sc->data[type] ) return 0;
 			sc_timer_next(5000 + tick, status_change_timer, bl->id, data);
+			return 0;
+		}
+		break;
+
+	case SC_WARMER:
+		{
+			unsigned char regen_percent = sce->val1;
+
+			// Heater triples the heal percent.
+			if ( sc->data[SC_HEATER_OPTION] )
+				regen_percent *= 3;
+
+			if ( sc->data[SC_AKAITSUKI] )
+				skill_akaitsuki_damage(bl, bl, status->max_hp * regen_percent / 100, SO_WARMER, sce->val1, tick);
+			else
+				status_percent_heal(bl, regen_percent, 0);
+			sc_timer_next(3000+tick, status_change_timer, bl->id, data);
 			return 0;
 		}
 		break;

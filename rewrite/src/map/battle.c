@@ -814,6 +814,11 @@ int battle_calc_damage(struct block_list *src,struct block_list *bl,struct Damag
 		// Magma Flow autotriggers a splash AoE around self by chance when hit.
 		if ( (sce = sc->data[SC_MAGMA_FLOW]) && rand()%100 < 3 * sce->val1)
 			skill_castend_nodamage_id(bl,bl,MH_MAGMA_FLOW,sce->val1,0,flag|2);
+
+		// Circle of Fire autotriggers a splash AoE around self by chance when hit.
+		if ( sc->data[SC_CIRCLE_OF_FIRE_OPTION] && rand()%100 < 25)
+			skill_castend_nodamage_id(bl,bl,EL_CIRCLE_OF_FIRE,1,0,flag|2);
+
 	}
 
 	if( tsc && tsc->count )
@@ -1101,14 +1106,17 @@ int battle_addmastery(struct map_session_data *sd,struct block_list *target,int 
 	if (sd->sc.data[SC_GN_CARTBOOST])
 		damage += sd->sc.data[SC_GN_CARTBOOST]->val3;
 
-	if( (skill = pc_checkskill(sd, RA_RANGERMAIN)) > 0 && (status->race == RC_BRUTE || status->race == RC_PLANT || status->race == RC_FISH) )
+	if( (skill = pc_checkskill(sd, RA_RANGERMAIN)) > 0 &&
+		(status->race == RC_BRUTE || status->race == RC_PLANT || status->race == RC_FISH) )
 		damage += (skill * 5);
 
-	if( (skill = pc_checkskill(sd,NC_RESEARCHFE)) > 0 && (status->def_ele == ELE_FIRE || status->def_ele == ELE_EARTH) )
-		damage += (skill * 10);
-	
 	if( (skill = pc_checkskill(sd,NC_MADOLICENCE)) > 0 && pc_ismadogear(sd) )
 		damage += (skill * 15);
+
+	if((skill = pc_checkskill(sd,NC_RESEARCHFE)) > 0 &&
+		target->type == BL_MOB && //This bonus doesnt work against players.
+		(status->def_ele == ELE_EARTH || status->def_ele == ELE_FIRE) )
+		damage += (skill * 10);
 
 	if(type == 0)
 		weapon = sd->weapontype1;
@@ -3093,6 +3101,13 @@ static struct Damage battle_calc_weapon_attack(struct block_list *src, struct bl
 					else
 						skillratio = 20 * skill_lv + 300;
 					break;
+				case EL_CIRCLE_OF_FIRE:
+				case EL_FIRE_BOMB_ATK:
+					skillratio = 300;
+					break;
+				case EL_FIRE_WAVE_ATK:
+					skillratio = 600;
+					break;
 			}
 
 			ATK_RATE(skillratio);
@@ -3360,9 +3375,12 @@ static struct Damage battle_calc_weapon_attack(struct block_list *src, struct bl
 				if((battle_check_undead(sstatus->race,sstatus->def_ele) || sstatus->race==RC_DEMON) && //This bonus already doesnt work vs players
 					src->type == BL_MOB && (skill=pc_checkskill(tsd,AL_DP)) > 0)
 					vit_def += skill*(int)(3 +(tsd->status.base_level+1)*0.04);   // submitted by orn
-				if( src->type == BL_MOB && (skill=pc_checkskill(tsd,RA_RANGERMAIN))>0 && 
-					(sstatus->race == RC_BRUTE || sstatus->race == RC_FISH || sstatus->race == RC_PLANT) )
+				if( src->type == BL_MOB && (skill=pc_checkskill(tsd,RA_RANGERMAIN)) > 0 && 
+					(sstatus->race == RC_BRUTE || sstatus->race == RC_PLANT || sstatus->race == RC_FISH) )
 					vit_def += skill*5;
+				if ( src->type == BL_MOB && (skill=pc_checkskill(tsd,NC_RESEARCHFE)) > 0 &&
+					(sstatus->def_ele == ELE_EARTH || sstatus->def_ele == ELE_FIRE) )
+					vit_def += skill*10;
 			} else { //Mob-Pet vit-eq
 				//VIT + rnd(0,[VIT/20]^2-1)
 				vit_def = (def2/20)*(def2/20);
@@ -3886,6 +3904,20 @@ struct Damage battle_calc_magic_attack(struct block_list *src,struct block_list 
 			if ( sd )// Take the element of the charms.
 				s_ele = sd->charmball_type;
 			break;
+
+		case SO_PSYCHIC_WAVE:
+			if ( sc )
+			{
+				if ( sc->data[SC_HEATER_OPTION] )
+					s_ele = ELE_FIRE;
+				//else if ( sc->data[] )
+				//	s_ele = ELE_WATER;
+				//else if ( sc->data[] )
+				//	s_ele = ELE_WIND;
+				//else if ( sc->data[] )
+				//	s_ele = ELE_EARTH;
+			}
+			break;
 	}
 
 	//Set miscellaneous data that needs be filled
@@ -4004,6 +4036,8 @@ struct Damage battle_calc_magic_attack(struct block_list *src,struct block_list 
 						break;
 					case MG_FIREWALL:
 						skillratio -= 50;
+						if ( sc->data[SC_PYROTECHNIC_OPTION] )
+							skillratio += skillratio * sc->data[SC_PYROTECHNIC_OPTION]->val2 / 100;
 						break;
 					case MG_FIREBOLT:
 						if ( sc )
@@ -4015,6 +4049,8 @@ struct Damage battle_calc_magic_attack(struct block_list *src,struct block_list 
 								ad.flag = BF_WEAPON|BF_SHORT;
 								ad.type = 0;
 							}
+							if ( sc->data[SC_PYROTECHNIC_OPTION] )
+								skillratio += skillratio * sc->data[SC_PYROTECHNIC_OPTION]->val2 / 100;
 						}
 						break;
 					case MG_LIGHTNINGBOLT:
@@ -4244,6 +4280,8 @@ struct Damage battle_calc_magic_attack(struct block_list *src,struct block_list 
 						skillratio = 60 * skill_lv;
 						if( level_effect_bonus == 1 )
 							skillratio = skillratio * status_get_base_lv_effect(src) / 100;
+						if ( sc->data[SC_HEATER_OPTION] )
+							skillratio += skillratio * sc->data[SC_HEATER_OPTION]->val2 / 100;
 						break;
 					case SO_ELECTRICWALK:
 						skillratio = 60 * skill_lv;
@@ -5373,11 +5411,14 @@ enum damage_lv battle_weapon_attack(struct block_list* src, struct block_list* t
 			status_change_end(target, SC_DEVOTION, INVALID_TIMER);
 	}
 
-	if (sc && sc->data[SC_AUTOSPELL] && rand()%100 < sc->data[SC_AUTOSPELL]->val4) {
+	if (sc && sc->data[SC_AUTOSPELL] && rand()%100 < sc->data[SC_AUTOSPELL]->val4)
+	{
+		struct unit_data *ud;
 		int sp = 0;
 		int skillid = sc->data[SC_AUTOSPELL]->val2;
 		int skilllv = sc->data[SC_AUTOSPELL]->val3;
 		int i = rand()%100;
+		int delay;
 		if (sc->data[SC_SPIRIT] && sc->data[SC_SPIRIT]->val2 == SL_SAGE)
 			i = 0; //Max chance, no skilllv reduction. [Skotlex]
 		if (i >= 50) skilllv -= 2;
@@ -5386,8 +5427,10 @@ enum damage_lv battle_weapon_attack(struct block_list* src, struct block_list* t
 		sp = skill_get_sp(skillid,skilllv) * 2 / 3;
 
 		if (sd) sd->state.autocast = 1;
-		if (status_charge(src, 0, sp)) {
-			switch (skill_get_casttype(skillid)) {
+		if (status_charge(src, 0, sp))
+		{
+			switch (skill_get_casttype(skillid))
+			{
 				case CAST_GROUND:
 					skill_castend_pos2(src, target->x, target->y, skillid, skilllv, tick, flag);
 					break;
@@ -5397,6 +5440,18 @@ enum damage_lv battle_weapon_attack(struct block_list* src, struct block_list* t
 				case CAST_DAMAGE:
 					skill_castend_damage_id(src, target, skillid, skilllv, tick, flag);
 					break;
+			}
+
+			ud = unit_bl2ud(src);
+			if (ud)
+			{
+				delay = skill_delayfix(src, skillid, skilllv);
+				if( DIFF_TICK(ud->canact_tick, tick + delay) < 0 )
+				{
+					ud->canact_tick = tick+delay;
+					if ( battle_config.display_status_timers && sd && skill_get_delay(skillid, skilllv))
+						clif_status_change(src, SI_ACTIONDELAY, 1, delay, 0, 0, 1);
+				}
 			}
 		}
 		if (sd) sd->state.autocast = 0;
@@ -5435,6 +5490,33 @@ enum damage_lv battle_weapon_attack(struct block_list* src, struct block_list* t
 					// Enable the cooldown code below if you add any skills that have a cooldown.
 					//if( sd && skill_get_cooldown(skillid,skilllv) > 0 )
 					//	skill_blockpc_start(sd, skillid, skill_get_cooldown(skillid, skilllv));
+					if ( battle_config.display_status_timers && sd && skill_get_delay(skillid, skilllv))
+						clif_status_change(src, SI_ACTIONDELAY, 1, delay, 0, 0, 1);
+				}
+			}
+		}
+		if (sd) sd->state.autocast = 0;
+	}
+
+	if (sc && sc->data[SC_TROPIC_OPTION] && rand()%100 < sc->data[SC_TROPIC_OPTION]->val2)
+	{
+		struct unit_data *ud;
+		short skillid = MG_FIREBOLT;
+		short skilllv = sc->data[SC_TROPIC_OPTION]->val3;
+		int delay;
+
+		if (sd) sd->state.autocast = 1;
+		if (status_charge(src, 0, skill_get_sp(skillid,skilllv)))
+		{
+			skill_castend_damage_id(src, target, skillid, skilllv, tick, flag);
+
+			ud = unit_bl2ud(src);
+			if (ud)
+			{
+				delay = skill_delayfix(src, skillid, skilllv);
+				if( DIFF_TICK(ud->canact_tick, tick + delay) < 0 )
+				{
+					ud->canact_tick = tick+delay;
 					if ( battle_config.display_status_timers && sd && skill_get_delay(skillid, skilllv))
 						clif_status_change(src, SI_ACTIONDELAY, 1, delay, 0, 0, 1);
 				}

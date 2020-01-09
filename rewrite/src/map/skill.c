@@ -1302,6 +1302,8 @@ int skill_additional_effect (struct block_list* src, struct block_list *bl, int 
 		break;
 	case SO_DIAMONDDUST:
 		rate = 5 + 5 * skilllv;
+		if ( sc && sc->data[SC_COOLER_OPTION] )
+			rate += sc->data[SC_COOLER_OPTION]->val3;
 		sc_start(bl, SC_CRYSTALIZE, rate, skilllv, skill_get_time2(skillid, skilllv));
 		break;
 	case SO_VARETYR_SPEAR:
@@ -2873,7 +2875,7 @@ int skill_attack(int attack_type, struct block_list* src, struct block_list *dsr
 
 	if( !dmg.amotion )
 	{ //Instant damage
-		if( !sc || !sc->data[SC_DEVOTION] )
+		if( !sc || !(sc->data[SC_DEVOTION] || sc->data[SC_WATER_SCREEN_OPTION]) )
 			status_fix_damage(src,bl,damage,dmg.dmotion); //Deal damage before knockback to allow stuff like firewall+storm gust combo.
 		if( !status_isdead(bl) )
 			skill_additional_effect(src,bl,skillid,skilllv,dmg.flag,dmg.dmg_lv,tick);
@@ -2995,6 +2997,18 @@ int skill_attack(int attack_type, struct block_list* src, struct block_list *dsr
 		}
 		else
 			status_change_end(bl, SC_DEVOTION, INVALID_TIMER);
+	}
+
+	if( sc && sc->data[SC_WATER_SCREEN_OPTION] && (skillid != PA_PRESSURE && skillid != SJ_NOVAEXPLOSING && skillid != SP_SOULEXPLOSION) )
+	{
+		struct status_change_entry *sce = sc->data[SC_WATER_SCREEN_OPTION];
+		struct block_list *d_bl = map_id2bl(sce->val1);
+
+		if( d_bl && (d_bl->type == BL_ELEM && ((TBL_ELEM*)d_bl)->master && ((TBL_ELEM*)d_bl)->master->bl.id == bl->id) )
+		{
+			clif_damage(d_bl, d_bl, gettick(), 0, 0, damage, 0, 0, 0);
+			status_fix_damage(NULL, d_bl, damage, 0);
+		}
 	}
 
 	if( damage > 0 && !(tstatus->mode&MD_BOSS) )
@@ -3900,6 +3914,7 @@ int skill_castend_damage_id (struct block_list* src, struct block_list *bl, int 
 {
 	struct map_session_data *sd = NULL, *tsd = NULL;
 	struct mob_data *md = NULL, *tmd = NULL;
+	struct elemental_data *ed = NULL;
 	struct status_data *sstatus, *tstatus;
 	struct status_change *sc, *tsc;
 
@@ -3916,6 +3931,7 @@ int skill_castend_damage_id (struct block_list* src, struct block_list *bl, int 
 
 	sd = BL_CAST(BL_PC, src);
 	md = BL_CAST(BL_MOB, src);
+	ed = BL_CAST(BL_ELEM, src);
 
 	tsd = BL_CAST(BL_PC, bl);
 	tmd = BL_CAST(BL_MOB, bl);
@@ -4490,6 +4506,7 @@ int skill_castend_damage_id (struct block_list* src, struct block_list *bl, int 
 	case EL_CIRCLE_OF_FIRE:
 	case EL_FIRE_BOMB_ATK:
 	case EL_FIRE_WAVE_ATK:
+	case EL_WATER_SCREW_ATK:
 		if( flag&1 )
 		{	//Recursive invocation
 			// skill_area_temp[0] holds number of targets in area
@@ -4746,13 +4763,14 @@ int skill_castend_damage_id (struct block_list* src, struct block_list *bl, int 
 	case SU_SV_STEMSPEAR:
 	case MH_ERASER_CUTTER:
 	case EL_FIRE_ARROW:
+	case EL_ICE_NEEDLE:
 		skill_attack(BF_MAGIC,src,src,bl,skillid,skilllv,tick,flag);
 		break;
 
-
-
 	case EL_FIRE_BOMB:
 	case EL_FIRE_WAVE:
+	case EL_WATER_SCREW:
+	case EL_TIDAL_WEAPON:
 		{
 			short skill_switch = 0;
 
@@ -4760,19 +4778,31 @@ int skill_castend_damage_id (struct block_list* src, struct block_list *bl, int 
 				skill_attack(skill_get_type(skillid),src,src,bl,skillid,skilllv,tick,flag);
 			else
 			{
-				switch ( skillid )
+
+				if ( ed && skillid == EL_TIDAL_WEAPON )
 				{
-					case EL_FIRE_BOMB:
-						skill_switch = EL_FIRE_BOMB_ATK;
-						break;
-
-					case EL_FIRE_WAVE:
-						skill_switch = EL_FIRE_WAVE_ATK;
-						break;
+					clif_skill_damage(src, &ed->master->bl,tick, status_get_amotion(src), 0, -30000, 1, skillid, skilllv, 5);
+					sc_start(&ed->bl, SC_TIDAL_WEAPON, 100, 1, skill_get_time(skillid,skilllv));
 				}
+				else
+				{
+					switch ( skillid )
+					{
+						case EL_FIRE_BOMB:
+							skill_switch = EL_FIRE_BOMB_ATK;
+							break;
 
-				clif_skill_damage(src,bl,tick, status_get_amotion(src), 0, -30000, 1, skillid, skilllv, 5);
-				skill_castend_damage_id(src, bl, skill_switch, skilllv, tick, flag);
+						case EL_FIRE_WAVE:
+							skill_switch = EL_FIRE_WAVE_ATK;
+							break;
+
+						case EL_WATER_SCREW:
+							skill_switch = EL_WATER_SCREW_ATK;
+							break;
+					}
+					clif_skill_damage(src,bl,tick, status_get_amotion(src), 0, -30000, 1, skillid, skilllv, 5);
+					skill_castend_damage_id(src, bl, skill_switch, skilllv, tick, flag);
+				}
 			}
 		}
 		break;
@@ -16019,7 +16049,10 @@ struct skill_condition skill_get_requirement(struct map_session_data* sd, short 
 		if( itemid_is_mado_fuel(req.itemid[i]) && sd->special_state.no_madofuel )
 			req.amount[i] = req.itemid[i] = 0;
 
-		if ( sc && sc->data[SC_TROPIC_OPTION] && (skill == SA_FLAMELAUNCHER || skill == SA_VOLCANO) && rand()%100 < 50 )
+		if ( sc && (
+			(sc->data[SC_TROPIC_OPTION] && (skill == SA_FLAMELAUNCHER || skill == SA_VOLCANO)) || 
+			(sc->data[SC_CHILLY_AIR_OPTION] && (skill == SA_FROSTWEAPON || skill == SA_DELUGE))
+			) && rand()%100 < 50 )
 			req.amount[i] = req.itemid[i] = 0;
 	}
 
@@ -16099,7 +16132,7 @@ struct skill_condition skill_get_requirement(struct map_session_data* sd, short 
 				req.sp -= req.sp * 10 / 100;
 			break;
 		case SO_PSYCHIC_WAVE:
-			if ( sc && ( sc->data[SC_HEATER_OPTION] ) )
+			if ( sc && (sc->data[SC_HEATER_OPTION] || sc->data[SC_COOLER_OPTION]) )
 				req.sp += req.sp * 50 / 100;
 			break;
 		case SO_SUMMON_AGNI:

@@ -430,6 +430,12 @@ int battle_calc_damage(struct block_list *src,struct block_list *bl,struct Damag
 			return 0;
 		}
 
+		if( (sce=sc->data[SC_ZEPHYR]) && rand()%100 < sce->val2 )
+		{
+			d->dmg_lv = ATK_BLOCK;
+			return 0;
+		}
+
 		if( sc->data[SC_SAFETYWALL] && (flag&(BF_SHORT|BF_MAGIC)) == BF_SHORT )
 		{
 			struct skill_unit_group* group = skill_id2group(sc->data[SC_SAFETYWALL]->val3);
@@ -442,7 +448,7 @@ int battle_calc_damage(struct block_list *src,struct block_list *bl,struct Damag
 			status_change_end(bl, SC_SAFETYWALL, INVALID_TIMER);
 		}
 
-		if( ( (sc->data[SC_PNEUMA] || sc->data[SC_NEUTRALBARRIER] ) && (flag&(BF_MAGIC|BF_LONG)) == BF_LONG) || sc->data[SC__MANHOLE] )
+		if( ( (sc->data[SC_PNEUMA] || sc->data[SC_NEUTRALBARRIER] || sc->data[SC_ZEPHYR] ) && (flag&(BF_MAGIC|BF_LONG)) == BF_LONG) || sc->data[SC__MANHOLE] )
 		{
 			d->dmg_lv = ATK_BLOCK;
 			return 0;
@@ -2807,6 +2813,8 @@ static struct Damage battle_calc_weapon_attack(struct block_list *src, struct bl
 					skillratio = 50 * skill_lv + 50 * (sd?pc_checkskill(sd, SO_STRIKING):5);
 					if( level_effect_bonus == 1 )
 						skillratio = skillratio * status_get_base_lv_effect(src) / 100;
+					if ( sc && sc->data[SC_BLAST_OPTION] )
+							skillratio += sc->data[SC_BLAST_OPTION]->val3;
 					break;
 				case GN_CART_TORNADO:
 					{
@@ -3110,6 +3118,15 @@ static struct Damage battle_calc_weapon_attack(struct block_list *src, struct bl
 					break;
 				case EL_TIDAL_WEAPON:
 					skillratio = 1500;
+					break;
+				case EL_WIND_SLASH:
+					skillratio = 200;
+					break;
+				case EL_HURRICANE:
+					skillratio = 700;
+					break;
+				case EL_TYPOON_MIS:
+					skillratio = 1000;
 					break;
 			}
 
@@ -3915,8 +3932,8 @@ struct Damage battle_calc_magic_attack(struct block_list *src,struct block_list 
 					s_ele = ELE_FIRE;
 				else if ( sc->data[SC_COOLER_OPTION] )
 					s_ele = ELE_WATER;
-				//else if ( sc->data[] )
-				//	s_ele = ELE_WIND;
+				else if ( sc->data[SC_BLAST_OPTION] )
+					s_ele = ELE_WIND;
 				//else if ( sc->data[] )
 				//	s_ele = ELE_EARTH;
 			}
@@ -4068,10 +4085,15 @@ struct Damage battle_calc_magic_attack(struct block_list *src,struct block_list 
 								ad.flag = BF_WEAPON|BF_SHORT;
 								ad.type = 0;
 							}
+
+							if ( sc->data[SC_GUST_OPTION] )
+								skillratio += sc->data[SC_GUST_OPTION]->val2;
 						}
 						break;
 					case MG_THUNDERSTORM:
 						skillratio -= 20;
+						if ( sc->data[SC_GUST_OPTION] )
+							skillratio += sc->data[SC_GUST_OPTION]->val2;
 						break;
 					case MG_FROSTDIVER:
 						skillratio += 10*skill_lv;
@@ -4294,6 +4316,8 @@ struct Damage battle_calc_magic_attack(struct block_list *src,struct block_list 
 						skillratio = 60 * skill_lv;
 						if( level_effect_bonus == 1 )
 							skillratio = skillratio * status_get_base_lv_effect(src) / 100;
+						if ( sc && sc->data[SC_BLAST_OPTION] )
+							skillratio += sc->data[SC_BLAST_OPTION]->val2;
 						break;
 					case SO_EARTHGRAVE:
 						skillratio = sstatus->int_ * skill_lv + 200 * (sd?pc_checkskill(sd, SA_SEISMICWEAPON):5);
@@ -4326,6 +4350,8 @@ struct Damage battle_calc_magic_attack(struct block_list *src,struct block_list 
 						skillratio = sstatus->int_ * skill_lv + 50 * (sd?pc_checkskill(sd, SA_LIGHTNINGLOADER):5);
 						if( level_effect_bonus == 1 )
 							skillratio = skillratio * status_get_base_lv_effect(src) / 100;
+						if ( sc && sc->data[SC_BLAST_OPTION] )
+							skillratio += sc->data[SC_BLAST_OPTION]->val3;
 						break;
 					case GN_DEMONIC_FIRE:
 						if ( skill_lv > 20 )// Fire Expansion Level 2
@@ -4398,14 +4424,16 @@ struct Damage battle_calc_magic_attack(struct block_list *src,struct block_list 
 						break;
 					case EL_FIRE_BOMB:
 					case EL_ICE_NEEDLE:
+					case EL_HURRICANE_ATK:
 						skillratio = 500;
+						break;
+					case EL_FIRE_WAVE:
+					case EL_TYPOON_MIS_ATK:
+						skillratio = 1200;
 						break;
 					case EL_WATER_SCREW:
 					case EL_WATER_SCREW_ATK:
 						skillratio = 1000;
-						break;
-					case EL_FIRE_WAVE:
-						skillratio = 1200;
 						break;
 				}
 
@@ -5556,6 +5584,33 @@ enum damage_lv battle_weapon_attack(struct block_list* src, struct block_list* t
 		struct unit_data *ud;
 		short skillid = MG_COLDBOLT;
 		short skilllv = sc->data[SC_CHILLY_AIR_OPTION]->val3;
+		int delay;
+
+		if (sd) sd->state.autocast = 1;
+		if (status_charge(src, 0, skill_get_sp(skillid,skilllv)))
+		{
+			skill_castend_damage_id(src, target, skillid, skilllv, tick, flag);
+
+			ud = unit_bl2ud(src);
+			if (ud)
+			{
+				delay = skill_delayfix(src, skillid, skilllv);
+				if( DIFF_TICK(ud->canact_tick, tick + delay) < 0 )
+				{
+					ud->canact_tick = tick+delay;
+					if ( battle_config.display_status_timers && sd && skill_get_delay(skillid, skilllv))
+						clif_status_change(src, SI_ACTIONDELAY, 1, delay, 0, 0, 1);
+				}
+			}
+		}
+		if (sd) sd->state.autocast = 0;
+	}
+
+	if ( sc && sc->data[SC_WILD_STORM_OPTION] && rand()%100 < sc->data[SC_WILD_STORM_OPTION]->val2 )
+	{
+		struct unit_data *ud;
+		short skillid = MG_LIGHTNINGBOLT;
+		short skilllv = sc->data[SC_WILD_STORM_OPTION]->val3;
 		int delay;
 
 		if (sd) sd->state.autocast = 1;

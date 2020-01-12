@@ -1658,6 +1658,38 @@ int skill_additional_effect (struct block_list* src, struct block_list *bl, int 
 	case EL_TYPOON_MIS_ATK:
 		status_change_start(bl,SC_SILENCE,10000,skilllv,0,0,0,skill_get_time(skillid,skilllv) * status_get_base_lv_effect(bl) / 10,2);
 		break;
+	case EL_STONE_HAMMER:
+		sc_start(bl,SC_STUN,25,skilllv,skill_get_time(skillid,skilllv));
+		break;
+	case EL_ROCK_CRUSHER:
+		{
+			int duration = 15000;// Default BaseLV duration.
+			if ( ed )
+				duration = skill_get_time(skillid,skilllv) * status_get_base_lv_effect(&ed->master->bl) / 10;
+			sc_start(bl,SC_ROCK_CRUSHER,100,skilllv,duration);
+		}
+		break;
+	case EL_ROCK_CRUSHER_ATK:
+		{
+			short chance = 100;
+			int duration = 15000;// Default BaseLV duration.
+			if ( ed )
+			{
+				chance = status_get_base_lv_effect(&ed->master->bl) + status_get_job_lv_effect(&ed->master->bl) - status_get_lv(bl) - tstatus->vit;
+				duration = skill_get_time(skillid,skilllv) * status_get_base_lv_effect(&ed->master->bl) / 10;
+			}
+			sc_start(bl,SC_ROCK_CRUSHER_ATK,chance,skilllv,duration);
+		}
+		break;
+	case EL_STONE_RAIN:
+		if ( attack_type&BF_WEAPON )
+		{// Only the physical version can stun.
+			int duration = 5000;// Default JobLv 50 duration.
+			if ( ed )
+				duration = skill_get_time(skillid,skilllv) * status_get_job_lv_effect(&ed->master->bl) / 10;
+			status_change_start(bl,SC_STUN,5000,skilllv,0,0,0,duration,2);
+		}
+		break;
 	}
 
 	if (md && battle_config.summons_trigger_autospells && md->master_id && md->special_state.ai)
@@ -2706,6 +2738,7 @@ int skill_attack(int attack_type, struct block_list* src, struct block_list *dsr
 		dmg.dmotion = clif_skill_damage(src,bl,tick,dmg.amotion,dmg.dmotion,damage,dmg.div_,skillid,-1,5);
 		break;
 	case EL_CIRCLE_OF_FIRE:
+	case EL_STONE_RAIN:
 		dmg.dmotion = clif_skill_damage(dsrc,bl,tick, dmg.amotion, dmg.dmotion, damage, dmg.div_, 0, -2, 5);
 		break;
 
@@ -4102,6 +4135,8 @@ int skill_castend_damage_id (struct block_list* src, struct block_list *bl, int 
 	case MH_SILVERVEIN_RUSH:
 	case MH_MIDNIGHT_FRENZY:
 	case MH_CBC:
+	case EL_WIND_SLASH:
+	case EL_STONE_HAMMER:
 		skill_attack(BF_WEAPON,src,src,bl,skillid,skilllv,tick,flag);
 		break;
 
@@ -4778,7 +4813,6 @@ int skill_castend_damage_id (struct block_list* src, struct block_list *bl, int 
 	case MH_ERASER_CUTTER:
 	case EL_FIRE_ARROW:
 	case EL_ICE_NEEDLE:
-	case EL_WIND_SLASH:
 		skill_attack(BF_MAGIC,src,src,bl,skillid,skilllv,tick,flag);
 		break;
 
@@ -4788,6 +4822,7 @@ int skill_castend_damage_id (struct block_list* src, struct block_list *bl, int 
 	case EL_TIDAL_WEAPON:
 	case EL_HURRICANE:
 	case EL_TYPOON_MIS:
+	case EL_ROCK_CRUSHER:
 		{
 			short skill_switch = 0;
 
@@ -4795,7 +4830,6 @@ int skill_castend_damage_id (struct block_list* src, struct block_list *bl, int 
 				skill_attack(skill_get_type(skillid),src,src,bl,skillid,skilllv,tick,flag);
 			else
 			{
-
 				if ( ed && skillid == EL_TIDAL_WEAPON )
 				{
 					clif_skill_damage(src, &ed->master->bl,tick, status_get_amotion(src), 0, -30000, 1, skillid, skilllv, 5);
@@ -4805,6 +4839,11 @@ int skill_castend_damage_id (struct block_list* src, struct block_list *bl, int 
 				{
 					clif_skill_damage(src,bl,tick, status_get_amotion(src), 0, -30000, 1, skillid, skilllv, 5);
 					skill_attack(skill_get_type(EL_TYPOON_MIS_ATK),src,src,bl,EL_TYPOON_MIS_ATK,skilllv,tick,flag);
+				}
+				else if ( skillid == EL_ROCK_CRUSHER )
+				{
+					clif_skill_damage(src,bl,tick, status_get_amotion(src), 0, -30000, 1, skillid, skilllv, 5);
+					skill_attack(skill_get_type(EL_ROCK_CRUSHER_ATK),src,src,bl,EL_ROCK_CRUSHER_ATK,skilllv,tick,flag);
 				}
 				else
 				{
@@ -4829,6 +4868,27 @@ int skill_castend_damage_id (struct block_list* src, struct block_list *bl, int 
 					clif_skill_damage(src,bl,tick, status_get_amotion(src), 0, -30000, 1, skillid, skilllv, 5);
 					skill_castend_damage_id(src, bl, skill_switch, skilllv, tick, flag);
 				}
+			}
+		}
+		break;
+
+	case EL_STONE_RAIN:
+		if ( !flag && rand()%100 < 50 )
+		{// Physical Version. Single target.
+			clif_skill_damage(src,bl,tick, status_get_amotion(src), 0, -30000, 1, skillid, skilllv, 6);
+			skill_attack(skill_get_type(skillid),src,src,bl,skillid,skilllv,tick,flag);
+		}
+		else
+		{
+			if( flag&1 )
+			{// Magical version. Does a splash attack.
+				skill_attack(BF_MAGIC, src, src, bl, skillid, skilllv, tick, flag);
+			}
+			else
+			{
+				skill_area_temp[0] = 0;
+				clif_skill_damage(src,bl,tick, status_get_amotion(src), 0, -30000, 1, skillid, skilllv, 6);
+				map_foreachinrange(skill_area_sub, bl, skill_get_splash(skillid, skilllv), splash_target(src), src, skillid, skilllv, tick, flag|BCT_ENEMY|SD_SPLASH|1, skill_castend_damage_id);
 			}
 		}
 		break;
@@ -7256,6 +7316,7 @@ int skill_castend_nodamage_id (struct block_list *src, struct block_list *bl, in
 
 	case MG_STONECURSE:
 		{
+			short stone_chance = 20 + 4 * skilllv;
 			if (tstatus->mode&MD_BOSS) {
 				if (sd) clif_skill_fail(sd,skillid,0,0,0);
 				break;
@@ -7268,7 +7329,9 @@ int skill_castend_nodamage_id (struct block_list *src, struct block_list *bl, in
 				if (sd) clif_skill_fail(sd,skillid,0,0,0);
 				break;
 			}
-			if (sc_start4(bl,SC_STONE,(skilllv*4+20),
+			if ( sc && sc->data[SC_PETROLOGY_OPTION] )
+				stone_chance += 25;
+			if (sc_start4(bl,SC_STONE,stone_chance,
 				skilllv, 0, 0, skill_get_time(skillid, skilllv),
 				skill_get_time2(skillid,skilllv)))
 					clif_skill_nodamage(src,bl,skillid,skilllv,1);
@@ -16096,7 +16159,8 @@ struct skill_condition skill_get_requirement(struct map_session_data* sd, short 
 		if ( sc && (
 			(sc->data[SC_TROPIC_OPTION] && (skill == SA_FLAMELAUNCHER || skill == SA_VOLCANO)) || 
 			(sc->data[SC_CHILLY_AIR_OPTION] && (skill == SA_FROSTWEAPON || skill == SA_DELUGE)) || 
-			(sc->data[SC_WILD_STORM_OPTION] && (skill == SA_LIGHTNINGLOADER || skill == SA_VIOLENTGALE))
+			(sc->data[SC_WILD_STORM_OPTION] && (skill == SA_LIGHTNINGLOADER || skill == SA_VIOLENTGALE)) || 
+			(sc->data[SC_UPHEAVAL_OPTION] && skill == SA_SEISMICWEAPON)
 			) && rand()%100 < 50 )
 			req.amount[i] = req.itemid[i] = 0;
 	}
@@ -16177,7 +16241,7 @@ struct skill_condition skill_get_requirement(struct map_session_data* sd, short 
 				req.sp -= req.sp * 10 / 100;
 			break;
 		case SO_PSYCHIC_WAVE:
-			if ( sc && (sc->data[SC_HEATER_OPTION] || sc->data[SC_COOLER_OPTION] || sc->data[SC_GUST_OPTION]) )
+			if ( sc && (sc->data[SC_HEATER_OPTION] || sc->data[SC_COOLER_OPTION] || sc->data[SC_GUST_OPTION] || sc->data[SC_CURSED_SOIL_OPTION]) )
 				req.sp += req.sp * 50 / 100;
 			break;
 		case SO_SUMMON_AGNI:

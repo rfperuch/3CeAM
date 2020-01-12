@@ -3117,6 +3117,7 @@ static struct Damage battle_calc_weapon_attack(struct block_list *src, struct bl
 					skillratio = 600;
 					break;
 				case EL_TIDAL_WEAPON:
+				case EL_STONE_RAIN:
 					skillratio = 1500;
 					break;
 				case EL_WIND_SLASH:
@@ -3127,6 +3128,12 @@ static struct Damage battle_calc_weapon_attack(struct block_list *src, struct bl
 					break;
 				case EL_TYPOON_MIS:
 					skillratio = 1000;
+					break;
+				case EL_STONE_HAMMER:
+					skillratio = 500;
+					break;
+				case EL_ROCK_CRUSHER:
+					skillratio = 800;
 					break;
 			}
 
@@ -3934,8 +3941,8 @@ struct Damage battle_calc_magic_attack(struct block_list *src,struct block_list 
 					s_ele = ELE_WATER;
 				else if ( sc->data[SC_BLAST_OPTION] )
 					s_ele = ELE_WIND;
-				//else if ( sc->data[] )
-				//	s_ele = ELE_EARTH;
+				else if ( sc->data[SC_CURSED_SOIL_OPTION] )
+					s_ele = ELE_EARTH;
 			}
 			break;
 	}
@@ -3962,8 +3969,13 @@ struct Damage battle_calc_magic_attack(struct block_list *src,struct block_list 
 			if ( tstatus->def_ele == ELE_FIRE || battle_check_undead(tstatus->race, tstatus->def_ele) )
 				ad.blewcount = 0; //No knockback
 			break;
+
 		case PR_SANCTUARY:
 			ad.dmotion = 0; //No flinch animation.
+			break;
+
+		case EL_STONE_RAIN:
+			ad.div_ = 1;// Magic version only hits once.
 			break;
 	}
 
@@ -4128,6 +4140,11 @@ struct Damage battle_calc_magic_attack(struct block_list *src,struct block_list 
 						break;
 					case WZ_STORMGUST:
 						skillratio += 40*skill_lv;
+						break;
+					case WZ_EARTHSPIKE:
+					case WZ_HEAVENDRIVE:
+						if ( sc && sc->data[SC_PETROLOGY_OPTION] )
+							skillratio += sc->data[SC_PETROLOGY_OPTION]->val2;
 						break;
 					case HW_NAPALMVULCAN:
 						skillratio += 10*skill_lv-30;
@@ -4323,6 +4340,8 @@ struct Damage battle_calc_magic_attack(struct block_list *src,struct block_list 
 						skillratio = sstatus->int_ * skill_lv + 200 * (sd?pc_checkskill(sd, SA_SEISMICWEAPON):5);
 						if( level_effect_bonus == 1 )
 							skillratio = skillratio * status_get_base_lv_effect(src)/ 100;
+						if ( sc && sc->data[SC_CURSED_SOIL_OPTION] )
+							skillratio += sc->data[SC_CURSED_SOIL_OPTION]->val2;
 						break;
 					case SO_DIAMONDDUST:
 						skillratio = sstatus->int_ * skill_lv + 200 * (sd?pc_checkskill(sd, SA_FROSTWEAPON):5);
@@ -4335,6 +4354,8 @@ struct Damage battle_calc_magic_attack(struct block_list *src,struct block_list 
 						skillratio += 900 + 300 * skill_lv;
 						if( level_effect_bonus == 1 )
 							skillratio = skillratio * status_get_base_lv_effect(src) / 120;
+						if ( sc && sc->data[SC_CURSED_SOIL_OPTION] )
+							skillratio += sc->data[SC_CURSED_SOIL_OPTION]->val2;
 						break;
 					case SO_PSYCHIC_WAVE:
 						skillratio = 70 * skill_lv + 3 * sstatus->int_;
@@ -4345,6 +4366,8 @@ struct Damage battle_calc_magic_attack(struct block_list *src,struct block_list 
 						skillratio = 40 * skill_lv;
 						if( level_effect_bonus == 1 )
 							skillratio = skillratio * status_get_base_lv_effect(src) / 100;
+						if ( sc && sc->data[SC_CURSED_SOIL_OPTION] )
+							skillratio += sc->data[SC_CURSED_SOIL_OPTION]->val3;
 						break;
 					case SO_VARETYR_SPEAR:
 						skillratio = sstatus->int_ * skill_lv + 50 * (sd?pc_checkskill(sd, SA_LIGHTNINGLOADER):5);
@@ -4420,6 +4443,7 @@ struct Damage battle_calc_magic_attack(struct block_list *src,struct block_list 
 						skillratio = 1000;
 						break;
 					case EL_FIRE_ARROW:
+					case EL_ROCK_CRUSHER_ATK:
 						skillratio = 300;
 						break;
 					case EL_FIRE_BOMB:
@@ -4434,6 +4458,9 @@ struct Damage battle_calc_magic_attack(struct block_list *src,struct block_list 
 					case EL_WATER_SCREW:
 					case EL_WATER_SCREW_ATK:
 						skillratio = 1000;
+						break;
+					case EL_STONE_RAIN:
+						skillratio = 900;
 						break;
 				}
 
@@ -5175,6 +5202,28 @@ int battle_damage_area( struct block_list *bl, va_list ap)
 	return 0;
 }
 
+// Triggers aftercast delay for autocasted skills.
+void battle_autocast_aftercast(struct block_list* src, short skillid, short skilllv, unsigned int tick)
+{
+	struct map_session_data *sd = NULL;
+	struct unit_data *ud;
+	int delay;
+
+	sd = BL_CAST(BL_PC, src);
+	ud = unit_bl2ud(src);
+
+	if (ud)
+	{
+		delay = skill_delayfix(src, skillid, skilllv);
+		if( DIFF_TICK(ud->canact_tick, tick + delay) < 0 )
+		{
+			ud->canact_tick = tick+delay;
+			if ( battle_config.display_status_timers && sd && skill_get_delay(skillid, skilllv))
+				clif_status_change(src, SI_ACTIONDELAY, 1, delay, 0, 0, 1);
+		}
+	}
+}
+
 /*==========================================
  * ’Ê??UŒ‚?ˆ—?‚Ü‚Æ‚ß
  *------------------------------------------*/
@@ -5467,12 +5516,10 @@ enum damage_lv battle_weapon_attack(struct block_list* src, struct block_list* t
 
 	if (sc && sc->data[SC_AUTOSPELL] && rand()%100 < sc->data[SC_AUTOSPELL]->val4)
 	{
-		struct unit_data *ud;
 		int sp = 0;
 		int skillid = sc->data[SC_AUTOSPELL]->val2;
 		int skilllv = sc->data[SC_AUTOSPELL]->val3;
 		int i = rand()%100;
-		int delay;
 		if (sc->data[SC_SPIRIT] && sc->data[SC_SPIRIT]->val2 == SL_SAGE)
 			i = 0; //Max chance, no skilllv reduction. [Skotlex]
 		if (i >= 50) skilllv -= 2;
@@ -5495,28 +5542,15 @@ enum damage_lv battle_weapon_attack(struct block_list* src, struct block_list* t
 					skill_castend_damage_id(src, target, skillid, skilllv, tick, flag);
 					break;
 			}
-
-			ud = unit_bl2ud(src);
-			if (ud)
-			{
-				delay = skill_delayfix(src, skillid, skilllv);
-				if( DIFF_TICK(ud->canact_tick, tick + delay) < 0 )
-				{
-					ud->canact_tick = tick+delay;
-					if ( battle_config.display_status_timers && sd && skill_get_delay(skillid, skilllv))
-						clif_status_change(src, SI_ACTIONDELAY, 1, delay, 0, 0, 1);
-				}
-			}
+			battle_autocast_aftercast(src, skillid, skilllv, tick);
 		}
 		if (sd) sd->state.autocast = 0;
 	}
 
 	if( wd.flag&BF_WEAPON && sc && sc->data[SC__AUTOSHADOWSPELL] && rand()%100 < sc->data[SC__AUTOSHADOWSPELL]->val4 )
 	{
-		struct unit_data *ud;
 		short skillid = sc->data[SC__AUTOSHADOWSPELL]->val2;
 		short skilllv = sc->data[SC__AUTOSHADOWSPELL]->val3;
-		int delay;
 
 		if (sd) sd->state.autocast = 1;
 		if (status_charge(src, 0, skill_get_sp(skillid,skilllv)))
@@ -5534,101 +5568,7 @@ enum damage_lv battle_weapon_attack(struct block_list* src, struct block_list* t
 					break;
 			}
 
-			ud = unit_bl2ud(src);
-			if (ud)
-			{
-				delay = skill_delayfix(src, skillid, skilllv);
-				if( DIFF_TICK(ud->canact_tick, tick + delay) < 0 )
-				{
-					ud->canact_tick = tick+delay;
-					// Enable the cooldown code below if you add any skills that have a cooldown.
-					//if( sd && skill_get_cooldown(skillid,skilllv) > 0 )
-					//	skill_blockpc_start(sd, skillid, skill_get_cooldown(skillid, skilllv));
-					if ( battle_config.display_status_timers && sd && skill_get_delay(skillid, skilllv))
-						clif_status_change(src, SI_ACTIONDELAY, 1, delay, 0, 0, 1);
-				}
-			}
-		}
-		if (sd) sd->state.autocast = 0;
-	}
-
-	if ( sc && sc->data[SC_TROPIC_OPTION] && rand()%100 < sc->data[SC_TROPIC_OPTION]->val2 )
-	{
-		struct unit_data *ud;
-		short skillid = MG_FIREBOLT;
-		short skilllv = sc->data[SC_TROPIC_OPTION]->val3;
-		int delay;
-
-		if (sd) sd->state.autocast = 1;
-		if (status_charge(src, 0, skill_get_sp(skillid,skilllv)))
-		{
-			skill_castend_damage_id(src, target, skillid, skilllv, tick, flag);
-
-			ud = unit_bl2ud(src);
-			if (ud)
-			{
-				delay = skill_delayfix(src, skillid, skilllv);
-				if( DIFF_TICK(ud->canact_tick, tick + delay) < 0 )
-				{
-					ud->canact_tick = tick+delay;
-					if ( battle_config.display_status_timers && sd && skill_get_delay(skillid, skilllv))
-						clif_status_change(src, SI_ACTIONDELAY, 1, delay, 0, 0, 1);
-				}
-			}
-		}
-		if (sd) sd->state.autocast = 0;
-	}
-
-	if ( sc && sc->data[SC_CHILLY_AIR_OPTION] && rand()%100 < sc->data[SC_CHILLY_AIR_OPTION]->val2 )
-	{
-		struct unit_data *ud;
-		short skillid = MG_COLDBOLT;
-		short skilllv = sc->data[SC_CHILLY_AIR_OPTION]->val3;
-		int delay;
-
-		if (sd) sd->state.autocast = 1;
-		if (status_charge(src, 0, skill_get_sp(skillid,skilllv)))
-		{
-			skill_castend_damage_id(src, target, skillid, skilllv, tick, flag);
-
-			ud = unit_bl2ud(src);
-			if (ud)
-			{
-				delay = skill_delayfix(src, skillid, skilllv);
-				if( DIFF_TICK(ud->canact_tick, tick + delay) < 0 )
-				{
-					ud->canact_tick = tick+delay;
-					if ( battle_config.display_status_timers && sd && skill_get_delay(skillid, skilllv))
-						clif_status_change(src, SI_ACTIONDELAY, 1, delay, 0, 0, 1);
-				}
-			}
-		}
-		if (sd) sd->state.autocast = 0;
-	}
-
-	if ( sc && sc->data[SC_WILD_STORM_OPTION] && rand()%100 < sc->data[SC_WILD_STORM_OPTION]->val2 )
-	{
-		struct unit_data *ud;
-		short skillid = MG_LIGHTNINGBOLT;
-		short skilllv = sc->data[SC_WILD_STORM_OPTION]->val3;
-		int delay;
-
-		if (sd) sd->state.autocast = 1;
-		if (status_charge(src, 0, skill_get_sp(skillid,skilllv)))
-		{
-			skill_castend_damage_id(src, target, skillid, skilllv, tick, flag);
-
-			ud = unit_bl2ud(src);
-			if (ud)
-			{
-				delay = skill_delayfix(src, skillid, skilllv);
-				if( DIFF_TICK(ud->canact_tick, tick + delay) < 0 )
-				{
-					ud->canact_tick = tick+delay;
-					if ( battle_config.display_status_timers && sd && skill_get_delay(skillid, skilllv))
-						clif_status_change(src, SI_ACTIONDELAY, 1, delay, 0, 0, 1);
-				}
-			}
+			battle_autocast_aftercast(src, skillid, skilllv, tick);
 		}
 		if (sd) sd->state.autocast = 0;
 	}
@@ -5646,27 +5586,70 @@ enum damage_lv battle_weapon_attack(struct block_list* src, struct block_list* t
 
 	if ((sd || hd && battle_config.homunculus_pyroclastic_autocast == 1) && wd.flag&BF_SHORT && sc && sc->data[SC_PYROCLASTIC] && rand()%100 < sc->data[SC_PYROCLASTIC]->val3)
 	{
-		struct unit_data *ud;
 		short skillid = BS_HAMMERFALL;
 		short skilllv = sc->data[SC_PYROCLASTIC]->val1;
-		int delay;
 
 		if (sd) sd->state.autocast = 1;
 		if (status_charge(src, 0, skill_get_sp(skillid,skilllv)))
 		{
 			skill_castend_pos2(src, target->x, target->y, skillid, skilllv, tick, flag);
+			battle_autocast_aftercast(src, skillid, skilllv, tick);
+		}
+		if (sd) sd->state.autocast = 0;
+	}
 
-			ud = unit_bl2ud(src);
-			if (ud)
-			{
-				delay = skill_delayfix(src, skillid, skilllv);
-				if( DIFF_TICK(ud->canact_tick, tick + delay) < 0 )
-				{
-					ud->canact_tick = tick+delay;
-					if ( battle_config.display_status_timers && sd && skill_get_delay(skillid, skilllv))
-						clif_status_change(src, SI_ACTIONDELAY, 1, delay, 0, 0, 1);
-				}
-			}
+	if ( sc && sc->data[SC_TROPIC_OPTION] && rand()%100 < sc->data[SC_TROPIC_OPTION]->val2 )
+	{
+		short skillid = MG_FIREBOLT;
+		short skilllv = sc->data[SC_TROPIC_OPTION]->val3;
+
+		if (sd) sd->state.autocast = 1;
+		if (status_charge(src, 0, skill_get_sp(skillid,skilllv)))
+		{
+			skill_castend_damage_id(src, target, skillid, skilllv, tick, flag);
+			battle_autocast_aftercast(src, skillid, skilllv, tick);
+		}
+		if (sd) sd->state.autocast = 0;
+	}
+
+	if ( sc && sc->data[SC_CHILLY_AIR_OPTION] && rand()%100 < sc->data[SC_CHILLY_AIR_OPTION]->val2 )
+	{
+		short skillid = MG_COLDBOLT;
+		short skilllv = sc->data[SC_CHILLY_AIR_OPTION]->val3;
+
+		if (sd) sd->state.autocast = 1;
+		if (status_charge(src, 0, skill_get_sp(skillid,skilllv)))
+		{
+			skill_castend_damage_id(src, target, skillid, skilllv, tick, flag);
+			battle_autocast_aftercast(src, skillid, skilllv, tick);
+		}
+		if (sd) sd->state.autocast = 0;
+	}
+
+	if ( sc && sc->data[SC_WILD_STORM_OPTION] && rand()%100 < sc->data[SC_WILD_STORM_OPTION]->val2 )
+	{
+		short skillid = MG_LIGHTNINGBOLT;
+		short skilllv = sc->data[SC_WILD_STORM_OPTION]->val3;
+
+		if (sd) sd->state.autocast = 1;
+		if (status_charge(src, 0, skill_get_sp(skillid,skilllv)))
+		{
+			skill_castend_damage_id(src, target, skillid, skilllv, tick, flag);
+			battle_autocast_aftercast(src, skillid, skilllv, tick);
+		}
+		if (sd) sd->state.autocast = 0;
+	}
+
+	if ( sc && sc->data[SC_UPHEAVAL_OPTION] && rand()%100 < sc->data[SC_UPHEAVAL_OPTION]->val2 )
+	{
+		short skillid = WZ_EARTHSPIKE;
+		short skilllv = sc->data[SC_UPHEAVAL_OPTION]->val3;
+
+		if (sd) sd->state.autocast = 1;
+		if (status_charge(src, 0, skill_get_sp(skillid,skilllv)))
+		{
+			skill_castend_damage_id(src, target, skillid, skilllv, tick, flag);
+			battle_autocast_aftercast(src, skillid, skilllv, tick);
 		}
 		if (sd) sd->state.autocast = 0;
 	}

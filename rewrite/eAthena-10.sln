@@ -1,5 +1,5 @@
 Microsoft Visual Studio Solution File, Format Version 11.00
-# Visual Studio 2010
+# Visual C++ Express 2010
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "map-server_txt", "vcproj-10\map-server_txt.vcxproj", "{D356871D-58E1-450B-967A-E1E9646175AF}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "login-server_txt", "vcproj-10\login-server_txt.vcxproj", "{D356871D-58E1-450B-967A-E2E9646175AF}"
